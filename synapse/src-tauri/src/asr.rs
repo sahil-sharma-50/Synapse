@@ -27,17 +27,21 @@ pub fn request_stop() {
 
 /// Loading the model takes ~1.2s (measured in spikes/asr-spike) — done once
 /// on a background thread at app startup so the first dictation isn't slow.
-///
-/// NOTE: loads from a fixed relative "model" directory for now. Production
-/// should download this to the app data dir on first run (PRD §6.2) and
-/// point here instead — tracked for M5 onboarding.
-pub fn preload_model() {
-    std::thread::spawn(|| match ParakeetTDT::from_pretrained("model", None) {
-        Ok(model) => {
-            let _ = MODEL.set(Mutex::new(model));
-            println!("[synapse] ASR model loaded");
+/// A no-op (not an error) if the model hasn't been downloaded yet — dictation
+/// is simply unavailable until Settings > Voice (or onboarding) downloads it.
+pub fn preload_model(model_dir: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        if !crate::model_download::is_downloaded(&model_dir) {
+            println!("[synapse] ASR model not downloaded yet — dictation unavailable until it is");
+            return;
         }
-        Err(e) => eprintln!("[synapse] failed to load ASR model: {e}"),
+        match ParakeetTDT::from_pretrained(model_dir.to_string_lossy().as_ref(), None) {
+            Ok(model) => {
+                let _ = MODEL.set(Mutex::new(model));
+                println!("[synapse] ASR model loaded");
+            }
+            Err(e) => eprintln!("[synapse] failed to load ASR model: {e}"),
+        }
     });
 }
 

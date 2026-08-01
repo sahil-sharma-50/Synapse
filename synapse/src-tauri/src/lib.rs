@@ -357,6 +357,21 @@ fn delete_api_key(app: tauri::AppHandle, provider: String) -> Result<(), String>
     Ok(())
 }
 
+#[tauri::command]
+fn model_status(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(model_download::is_downloaded(&model_download::model_dir(&app)?))
+}
+
+/// Reloading the ASR model after a successful download means dictation works
+/// immediately without an app restart, even if the user downloaded from
+/// Settings > Voice rather than during onboarding.
+#[tauri::command]
+fn download_model(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = model_download::model_dir(&app)?;
+    model_download::spawn_download(app, move || asr::preload_model(dir));
+    Ok(())
+}
+
 /// Resolves provider and model itself from settings rather than trusting a
 /// frontend-supplied provider: the AI panel may invoke this before its own
 /// `get_settings` call has resolved, and a missing/undefined argument would
@@ -472,10 +487,12 @@ pub fn run() {
             get_settings,
             update_settings,
             open_settings,
-            delete_api_key
+            delete_api_key,
+            model_status,
+            download_model
         ])
         .setup(|app| {
-            asr::preload_model();
+            asr::preload_model(model_download::model_dir(app.handle())?);
 
             let overlay = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse")
