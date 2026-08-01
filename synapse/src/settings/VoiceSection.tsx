@@ -69,9 +69,20 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
 
       {tts.downloading && (
         <div className="set-progress">
-          <div className="set-meter set-meter-idle" />
+          {/* The fill child is required even in the indeterminate case — the
+              sweep animation lives on `.set-meter-idle .set-meter-fill`, so
+              an empty track renders as a frozen bar and reads as a hang. */}
+          <div className={`set-meter ${tts.known ? "" : "set-meter-idle"}`}>
+            <div
+              className="set-meter-fill"
+              style={tts.known ? { width: `${tts.percent}%` } : undefined}
+            />
+          </div>
           <div className="set-progress-foot">
             <span>{tts.stageLabel || "Starting…"}</span>
+            <span>
+              {tts.known ? `${formatBytes(tts.downloaded)} of ${formatBytes(tts.total)}` : ""}
+            </span>
           </div>
         </div>
       )}

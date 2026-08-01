@@ -25,6 +25,12 @@ export function useTtsSetup() {
   const [ready, setReady] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [stage, setStage] = useState<TtsSetupProgress["stage"] | null>(null);
+  // Only the `python` stage reports real byte totals; `packages` and
+  // `weights` emit 0/0 because pip and the prewarm sidecar give us no
+  // countable progress. `known` below is what callers use to decide between
+  // a percentage meter and an indeterminate one.
+  const [downloaded, setDownloaded] = useState(0);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
 
   const refresh = useCallback(() => {
@@ -38,11 +44,15 @@ export function useTtsSetup() {
   useEffect(() => {
     const unlistenProgress = listen<TtsSetupProgress>("tts-setup-progress", (e) => {
       setStage(e.payload.stage);
+      setDownloaded(e.payload.bytes_downloaded);
+      setTotal(e.payload.bytes_total);
     });
     const unlistenDone = listen("tts-setup-done", () => {
       setDownloading(false);
       setReady(true);
       setStage(null);
+      setDownloaded(0);
+      setTotal(0);
     });
     const unlistenError = listen<string>("tts-setup-error", (e) => {
       setDownloading(false);
@@ -58,6 +68,8 @@ export function useTtsSetup() {
   const start = useCallback(() => {
     setError("");
     setStage(null);
+    setDownloaded(0);
+    setTotal(0);
     setDownloading(true);
     invoke("download_tts_engine").catch((e) => {
       setDownloading(false);
@@ -65,11 +77,17 @@ export function useTtsSetup() {
     });
   }, []);
 
+  const known = total > 0;
+
   return {
     ready,
     downloading,
     stage,
     stageLabel: stage ? STAGE_LABELS[stage] : "",
+    downloaded,
+    total,
+    known,
+    percent: known ? Math.min(100, (downloaded / total) * 100) : 0,
     error,
     start,
     refresh,

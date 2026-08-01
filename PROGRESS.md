@@ -7,10 +7,10 @@ manual click-through with a real API key is still pending — see "Known gaps" b
 sub-project C + M6 (onboarding wizard, resumable model download, Windows `.exe` installer packaging) is
 now shipped, clearing the ship-blocker — see "Known gaps" below for what's automated-verified vs.
 still a manual-only pass. M5 sub-project B (remaining settings sections) not started. **Speak
-Selected Text** (pocket-tts sidecar TTS feature) is built and automated-verified (31 Rust tests +
-typecheck clean, whole-branch code review clean after fixes), on branch
-`worktree-speak-selected-text` pending merge — see its write-up below; the manual end-to-end
-pass (real download/install/playback) is still pending.
+Selected Text** (pocket-tts sidecar TTS feature) is built, automated-verified, and now **merged to
+`main`** — see its write-up below. Its setup pipeline has now been observed running end-to-end on
+real hardware (see "Force Quit + TTS progress meter fix" below); playback itself is still
+unconfirmed. Shipping as **v0.1.1**.
 
 Read `synapse_prd.md` (rewritten this session) and the plan file at
 `C:\Users\sahil\.claude\plans\so-i-am-working-ticklish-sunbeam.md` for full context/rationale.
@@ -342,6 +342,46 @@ placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
   `className="set-select"` but no matching rule exists yet in `Settings.css`, so it'll render
   unstyled until that's added.
 
+## Force Quit wedge + TTS progress meter fix (2026-08-02, v0.1.1)
+
+**Force Quit wedge.** The wheel now has an eighth wedge, `quit`, appended last in `wedges.ts` so it
+lands next to Settings — deliberately the furthest point from where the wheel opens under the
+cursor, since the action is irreversible. Clicking it invokes the new `force_quit` Tauri command,
+which calls `app.exit(0)`, the same path the tray's "Quit Synapse" item already used. **No
+confirmation step, by explicit product decision** — the whole point is a fast way to reclaim
+background resources; restart is via the app icon. `WedgeDef` gained an optional `danger` flag that
+drives a `.wedge-danger` class, filling the slice red on hover instead of the usual blue. This
+partially covers the "Quit Synapse button" item listed under M5 sub-project B below.
+
+**TTS setup looked hung — root-caused as a rendering bug, not a hang.** Onboarding's voice-engine
+step sat on "Installing packages…" with a dead, empty bar. Setup was in fact completing normally
+(~2min 17s to the `READY` marker, ~1 GB installed). Three defects compounded:
+
+1. Both indeterminate meters were rendered as *childless* self-closing divs
+   (`<div className="ob-meter ob-meter-idle" />`), but the sweep animation is defined on a
+   **descendant** selector (`.ob-meter-idle .ob-meter-fill`). With no child there was nothing to
+   animate — a permanently frozen track. `settings/VoiceSection.tsx` had the identical bug with
+   `.set-meter-idle`. The ASR meter in the same files nests the child correctly, which is why only
+   the TTS bars looked broken.
+2. `useTtsSetup()` discarded `bytes_downloaded`/`bytes_total` entirely, keeping only `stage` — even
+   though the `python` stage emits real byte counts with a correct total.
+3. `run_pip_install` uses `cmd.status()`, which blocks and discards pip's stdout, so the longest
+   stage (`packages`, torch CPU) emits a single `0/0` event and then goes silent for ~90s.
+
+Fixed 1 and 2: the hook now exposes `downloaded`/`total`/`known`/`percent`, both consumers nest the
+`-fill` div, and the `python` stage shows a real percentage plus "X of Y". Stages that genuinely
+have nothing countable (`packages`, `weights`) now show an *animated* sweep rather than a frozen
+bar. **Fix 3 was deliberately not attempted** — parsing pip's stdout depends on an output format
+pip does not guarantee as an API.
+
+**Verified:** `npx tsc --noEmit` clean, `cargo build` clean, `npm run tauri build` produced the NSIS
+installer, and the dev build launched and ran the TTS setup pipeline to completion on real hardware.
+**Not verified:** nobody has yet watched the *fixed* meters animate through all three stages, and
+actual TTS audio playback still hasn't been observed.
+
+**Bundle targets stay NSIS-only.** Re-adding the WiX `.msi` was considered and rejected again for
+the same reason as before — its dialogs can only be rebranded, not modernized.
+
 ## Known gaps / not yet done
 
 - **M5 sub-project A manual verification** — see above.
@@ -352,7 +392,8 @@ placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
   below. Automated-verified: `model_download.rs`'s resumable-download logic (mockito-tested:
   resume, truncation rejection, already-downloaded skip), `settings.rs`'s `onboarding_complete`
   field, `cargo build`/`npx tsc --noEmit` clean, and a real `npm run tauri build` that did produce
-  `synapse_0.1.0_x64_en-US.msi`. **Still manual-only** (no GUI in this dev environment): the
+  the NSIS installer (`Synapse_0.1.1_x64-setup.exe`; the bundle target moved from WiX `.msi` to
+  NSIS — see the installer polish write-up). **Still manual-only** (no GUI in this dev environment): the
   installer double-click itself (SmartScreen prompt, per-user install with no UAC, Start Menu
   shortcut, Windows Settings > Apps listing, uninstall) and a fresh-profile onboarding
   end-to-end run with no pre-existing `settings.json`/model files. macOS `.dmg` packaging and
@@ -360,12 +401,14 @@ placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
 - macOS is entirely unverified — every macOS-specific code path (`#[cfg(target_os = "macos")]`,
   vibrancy, `tauri-nspanel`) needs testing on real hardware.
 - No frontend automated tests exist (by design for sub-project A — see the design doc's "Out of
-  scope"); Rust has 4 unit tests (`settings.rs` × 3, `ai.rs` × 1). Everything else is manual
-  click-through.
-- **Speak Selected Text (see write-up above) — manual end-to-end pass not yet done.** Everything
-  runtime (Python download, pip install, weight prewarm, sidecar spawn, audio playback, wheel
-  wedge layout, Settings/onboarding UI) is manual-verification-only and hasn't been observed
-  running yet. `.set-select` CSS rule is missing for the voice dropdown (cosmetic).
+  scope"). Rust unit tests now live in `settings.rs`, `ai.rs`, `model_download.rs`, `inject.rs`,
+  `tts_setup.rs`, `tts_pocket.rs`, and `lib.rs`. Everything else is manual click-through — notably
+  every meter/progress UI, which is exactly where the v0.1.1 frozen-bar bug hid.
+- **Speak Selected Text — manual end-to-end pass still incomplete.** The setup pipeline (Python
+  download, pip install, weight prewarm) *has* now been observed completing on real hardware, and
+  the wheel/onboarding UI has been seen. **Still unobserved: sidecar spawn for a real request and
+  actual audio playback**, plus the fixed progress meters animating through all three stages.
+  `.set-select` CSS rule is missing for the voice dropdown (cosmetic).
   `python_path()` isn't dogfooded by `prewarm_weights` (minor DRY nit), and the downloaded
   python-build-standalone tarball is left on disk inside the wipeable `tts-env/` directory after
   extraction (disk space only). macOS is untested for this feature same as everything else.
@@ -375,15 +418,16 @@ placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
 1. Manual click-through of M5 sub-project A with a real API key (see above) — confirms the
    settings foundation before building on top of it.
 2. Human verification pass for M5 sub-project C + M6 (see the write-up below): install the built
-   `.msi` on a clean/fresh profile, walk through onboarding end-to-end with no pre-existing
+   NSIS `.exe` on a clean/fresh profile, walk through onboarding end-to-end with no pre-existing
    settings/model files, and confirm the standard installer behaviors (SmartScreen, per-user
    install, Start Menu shortcut, Apps listing, uninstall).
 3. M5 sub-project B: the remaining settings sections, including the Quit button.
-4. **Speak Selected Text — manual end-to-end pass** (see write-up above): download the TTS
-   engine from Settings → Voice, confirm all three setup stages complete, pick a voice, select
-   text in another app and speak it, verify interrupting mid-speech works, verify the AI panel's
-   read-aloud also picks up the pocket-tts voice, and verify the OS-native fallback still works
-   when the engine isn't downloaded.
+4. **Speak Selected Text — finish the manual end-to-end pass** (see write-up above). Setup now
+   completes on real hardware; what remains is: confirm the *fixed* progress meters animate through
+   all three stages (delete `%APPDATA%\com.synapse.app\tts-env\READY` to force a re-run), pick a
+   voice, select text in another app and speak it, verify interrupting mid-speech works, verify the
+   AI panel's read-aloud also picks up the pocket-tts voice, and verify the OS-native fallback
+   still works when the engine isn't downloaded.
 5. macOS packaging (`.dmg`, ad-hoc signing) — blocked on having a Mac to test.
 6. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
    it works — vibrancy, focus behavior, Gatekeeper/TCC flow, permissions.

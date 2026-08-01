@@ -68,6 +68,11 @@ svg * {
   fill: #ffffff;
 }
 
+.wedge-danger:hover .wedge-slice,
+.wedge-danger.wedge-hovered .wedge-slice {
+  fill: rgba(220, 50, 50, 0.75);
+}
+
 .hub-circle {
   fill: rgba(10, 10, 12, 0.98);
   stroke: none;

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Synapse is a cross-platform (Windows-first, macOS untested) desktop utility built with Tauri v2 (Rust backend) + React/TypeScript (frontend). A global hotkey (`Ctrl+Alt+Enter`) opens a circular radial menu at the cursor with actions: Speech-to-Text, AI chat, Screenshot, Snippet, Notepad, Settings.
+Synapse is a cross-platform (Windows-first, macOS untested) desktop utility built with Tauri v2 (Rust backend) + React/TypeScript (frontend). A global hotkey (`Ctrl+Alt+Enter`) opens a circular radial menu at the cursor with actions: Speech-to-Text, AI chat, Screenshot, Snippet, Notepad, Speak Selected Text, Settings, Force Quit.
 
 Read `synapse_prd.md` for full product rationale and `PROGRESS.md` for session-by-session history, what's built/verified, and known gaps. `PROGRESS.md` is the single source of truth for current project status — check it before starting new work.
 
@@ -55,9 +55,11 @@ Windows dev workflow when `npm run tauri dev`'s own output is unreliable to capt
 
 **Text injection** is clipboard paste-and-restore via `enigo` + `tauri-plugin-clipboard-manager`.
 
-**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration, all Tauri commands and window setup), `asr.rs` (speech-to-text), `inject.rs` (text injection), `notes.rs`, `screenshot.rs`, `snippets.rs`, `ai.rs`, `settings.rs`, `model_download.rs`, `tts.rs`.
+**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration, all Tauri commands and window setup), `asr.rs` (speech-to-text), `inject.rs` (text injection), `notes.rs`, `screenshot.rs`, `snippets.rs`, `ai.rs`, `settings.rs`, `model_download.rs`, `tts.rs` (OS TTS fallback), `tts_setup.rs` (installs the optional local voice engine), `tts_pocket.rs` (pocket-tts Python sidecar protocol).
 
-**Frontend source map** (`synapse/src/`): `App.tsx` (router by window label), `Wheel.tsx` + `wedges.ts` (radial menu), `Notepad.tsx`, `SnippetPicker.tsx`, `AiPanel.tsx`, `Settings.tsx` + `settings/` (per-section components), `Onboarding.tsx`, `modelDownload.ts` (shared download-progress hook used by both onboarding and Settings → Voice), `models.ts` (shared `Provider`/`Settings` types and model catalog).
+**Frontend source map** (`synapse/src/`): `App.tsx` (router by window label), `Wheel.tsx` + `wedges.ts` (radial menu), `Notepad.tsx`, `SnippetPicker.tsx`, `AiPanel.tsx`, `Settings.tsx` + `settings/` (per-section components), `Onboarding.tsx`, `modelDownload.ts` (shared download-progress hook used by both onboarding and Settings → Voice), `ttsSetup.ts` (stage-aware voice-engine setup hook, same two consumers), `models.ts` (shared `Provider`/`Settings` types and model catalog).
+
+**Indeterminate progress meters need a fill child.** Both meter styles animate via a *descendant* selector (`.ob-meter-idle .ob-meter-fill`, `.set-meter-idle .set-meter-fill`). Rendering the track as a childless `<div className="ob-meter ob-meter-idle" />` produces a permanently frozen empty bar that users read as a hang — always nest the `-fill` div, even when there's no percentage to show.
 
 ## Platform notes
 

@@ -92,6 +92,8 @@ export default function Wheel() {
     if (id === "stt") {
       setMode("listening"); // instant local feedback; backend event confirms it
       invoke("start_dictation");
+    } else if (id === "quit") {
+      invoke("force_quit"); // no confirmation, no toast — the process ends immediately
     } else {
       invoke("select_wedge", { wedge: id });
     }
@@ -146,7 +148,7 @@ export default function Wheel() {
           return (
             <g
               key={wedge.id}
-              className={`wedge${isHovered ? " wedge-hovered" : ""}`}
+              className={`wedge${wedge.danger ? " wedge-danger" : ""}${isHovered ? " wedge-hovered" : ""}`}
               onMouseEnter={() => setHovered(wedge.id)}
               onMouseLeave={() => setHovered((h) => (h === wedge.id ? null : h))}
               onClick={() => selectWedge(wedge.id)}

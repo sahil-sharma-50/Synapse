@@ -226,8 +226,27 @@ export default function Onboarding() {
                 <>
                   <div className="ob-meter-head">
                     <span className="ob-meter-pct">{tts.stageLabel || "Starting…"}</span>
+                    <span className="ob-meter-eta">
+                      {tts.known ? `${Math.floor(tts.percent)}%` : ""}
+                    </span>
                   </div>
-                  <div className="ob-meter ob-meter-idle" />
+                  {/* The fill child is required even in the indeterminate
+                      case — the sweep animation is defined on
+                      `.ob-meter-idle .ob-meter-fill`, so an empty track
+                      renders as a frozen bar and reads as a hang. */}
+                  <div className={`ob-meter ${tts.known ? "" : "ob-meter-idle"}`}>
+                    <div
+                      className="ob-meter-fill"
+                      style={tts.known ? { width: `${tts.percent}%` } : undefined}
+                    />
+                  </div>
+                  {tts.known && (
+                    <div className="ob-meter-foot">
+                      <span>
+                        {formatBytes(tts.downloaded)} of {formatBytes(tts.total)}
+                      </span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>

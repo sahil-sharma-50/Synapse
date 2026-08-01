@@ -1,9 +1,10 @@
-export type WedgeId = "stt" | "ai" | "screenshot" | "snippet" | "notepad" | "speak-selected" | "settings";
+export type WedgeId = "stt" | "ai" | "screenshot" | "snippet" | "notepad" | "speak-selected" | "settings" | "quit";
 
 export interface WedgeDef {
   id: WedgeId;
   label: string;
   icon: string; // SVG path data, drawn in a 24x24 viewBox
+  danger?: boolean; // true for destructive actions — hover fills red instead of blue
 }
 
 // Order matches PRD §4.2 — a single flat ring, clockwise from the top.
@@ -42,6 +43,12 @@ export const WEDGES: WedgeDef[] = [
     id: "settings",
     label: "Settings",
     icon: "M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94L14.4 2.81a.49.49 0 0 0-.48-.41h-3.84a.49.49 0 0 0-.47.41L9.25 5.35a7.3 7.3 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87a.5.5 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47-.01.59-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z",
+  },
+  {
+    id: "quit",
+    label: "Force Quit",
+    icon: "M13 2h-2v10h2V2Zm4.83 2.17-1.42 1.42A7 7 0 1 1 7.6 5.58L6.17 4.17a9 9 0 1 0 10.66 0Z",
+    danger: true,
   },
 ];
 

@@ -37,8 +37,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 
 /// Verified against the real release asset (20260728 tag, CPython 3.12.13,
-/// x86_64-pc-windows-msvc, `install_only` build) — see
-/// docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md. This archive's
+/// x86_64-pc-windows-msvc, `install_only` build) by downloading and
+/// inspecting it. This archive's
 /// root already contains a top-level `python/` directory (paths inside the
 /// tarball are `python/python.exe`, `python/Lib/...`, etc.), which is why
 /// `extract_python_archive` below unpacks into `env_dir` (the parent of
@@ -145,8 +145,7 @@ pub fn spawn_setup(app: tauri::AppHandle) {
             // Pinned exactly (unlike torch above): the sidecar script
             // imports `pocket_tts.data.audio.stream_audio_chunks`, an
             // internal module path that pocket-tts does not document or
-            // guarantee as public API (see
-            // docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md).
+            // guarantee as public API.
             // Only 2.1.0 has been verified against that import; a future
             // release could rename/move the module and silently fall back
             // to OS TTS with no diagnosable error.

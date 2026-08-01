@@ -125,6 +125,12 @@ fn dismiss_overlay(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn force_quit(app: tauri::AppHandle) {
+    println!("[synapse] force quit requested from wheel");
+    app.exit(0);
+}
+
+#[tauri::command]
 fn select_wedge(app: tauri::AppHandle, wedge: String) {
     println!("[synapse] wedge selected: {wedge}");
     match wedge.as_str() {
@@ -588,6 +594,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             dismiss_overlay,
             select_wedge,
+            force_quit,
             start_dictation,
             stop_dictation,
             load_note,
