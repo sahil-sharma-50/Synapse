@@ -1,7 +1,10 @@
 # Synapse — Session Handoff
 
 **Last updated:** 2026-08-01
-**Status:** M0–M4 complete and manually verified on Windows. M5 (Settings/onboarding) and M6 (Packaging) not started.
+**Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
+foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);
+manual click-through with a real API key is still pending — see "Known gaps" below. M5's
+remaining sub-projects (B, C) and M6 (Packaging) not started.
 
 Read `synapse_prd.md` (rewritten this session) and the plan file at
 `C:\Users\sahil\.claude\plans\so-i-am-working-ticklish-sunbeam.md` for full context/rationale.
@@ -30,9 +33,10 @@ This file is the "what to do next" summary.
   read it for full rationale on every architectural decision.
 - Throwaway ASR proof-of-concept (not part of the app): `C:\Users\sahil\Desktop\Synapse\spikes\asr-spike\`
 - Rust source: `synapse\src-tauri\src\` — `lib.rs` (orchestration + all Tauri commands/windows),
-  `asr.rs`, `inject.rs`, `notes.rs`, `screenshot.rs`, `snippets.rs`, `ai.rs`
+  `asr.rs`, `inject.rs`, `notes.rs`, `screenshot.rs`, `snippets.rs`, `ai.rs`, `settings.rs`
 - Frontend: `synapse\src\` — `App.tsx` (router by window label), `Wheel.tsx`, `Notepad.tsx`,
-  `SnippetPicker.tsx`, `AiPanel.tsx`, `wedges.ts`
+  `SnippetPicker.tsx`, `AiPanel.tsx`, `Settings.tsx`, `settings/AiSection.tsx`, `models.ts`,
+  `wedges.ts`
 
 ## Dev workflow (copy-paste)
 
@@ -125,23 +129,85 @@ robust — costs only that the underlying app's caret stops blinking while a Syn
 
 ---
 
+## M5 sub-project A — Settings foundation + AI section (shipped)
+
+Design: `docs/superpowers/specs/2026-08-01-settings-foundation-ai-section-design.md`. Plan:
+`docs/superpowers/plans/2026-08-01-settings-foundation-ai-section.md`.
+
+- **`settings.rs`** — hand-rolled JSON store (`Settings { ai: AiSettings }`), mirroring
+  `snippets.rs`'s pattern rather than `tauri-plugin-store` (the repo doesn't use it, despite PRD
+  §6.4 implying one). `load`/`save` take a `&Path`, so they're unit-tested with no Tauri runtime:
+  defaults on missing file, forward/backward-compat with unknown/missing fields (for B/C/D to add
+  sections later), corrupt file falls back to defaults and is backed up to `.bak` before being
+  overwritten. 3 new tests, joining the existing `ai::tests::api_key_survives_a_separate_entry`
+  (4 total, `cargo test --lib`).
+- **6th wheel wedge → Settings window.** New `settings` wedge (ring geometry is count-driven, no
+  layout work needed). Settings window follows the established hidden-on-close pattern (Notepad/
+  SnippetPicker/AiPanel) — closing it hides, never destroys.
+- **`get_settings`/`update_settings`/`open_settings`/`delete_api_key` commands.** `update_settings`
+  writes the file then broadcasts `settings-changed` — required because the AI panel is only ever
+  hidden, never closed, so it can't be relied on to re-read config next time it's shown.
+  `open_settings(section)` is the single entry point both the wheel wedge and the AI panel's
+  deep-link funnel through, so they can't drift apart; it emits `settings-navigate` when a section
+  is specified.
+- **Settings frontend** — `Settings.tsx` (sidebar shell, currently one "AI" row — B adds more as
+  they're built, no placeholder rows for unbuilt sections), `settings/AiSection.tsx` (provider
+  select, per-provider model picker with a curated dropdown + "Custom…" free-text escape hatch,
+  API key save/remove), `models.ts` (shared `Provider`/`Settings` types + model catalog).
+- **AI panel stripped down.** `AiPanel.tsx` no longer owns provider/model/key state — it reads
+  `get_settings`, listens for `settings-changed` to stay live while open, and shows a read-only
+  `Provider · model` header. A missing key now shows an actionable "Open Settings…" button
+  (`open_settings({ section: "ai" })`) instead of a dead-end inline key form.
+- **`ai.rs` no longer hardcodes models.** `ANTHROPIC_MODEL`/`OPENAI_MODEL` consts are gone;
+  `stream_chat` takes a resolved `model: &str` argument. `send_ai_message` (in `lib.rs`) loads
+  settings and resolves `model_for(provider)` before calling it — `ai.rs` stays a pure HTTP/SSE
+  module with no file I/O. Anthropic `max_tokens` raised 4096 → 16000: on `claude-opus-5` (now
+  reachable via the model picker) extended thinking is on by default and `max_tokens` caps
+  thinking *plus* response text, so the old limit would truncate mid-answer.
+- **API keys still never touch `settings.json`** — `Settings`/`AiSettings` carry no key fields;
+  key management goes through the OS keychain via `set_api_key`/`delete_api_key` only.
+
+**Consequence to carry into sub-project B:** choosing the wheel wedge over a tray icon leaves the
+app with no quit path. B's General or About section must add an explicit "Quit Synapse" button.
+
+**Verified automated:** `cargo test --lib` (4 passed), `cargo build` (clean), `npx tsc --noEmit`
+(clean), and the built exe launches cleanly with the new wedge/window wired up (confirmed via the
+dev-workflow log — no crash, no missing-window errors).
+
+**Not yet verified — needs a human pass with a real API key:** the full interactive flow (open
+Settings from the wheel, save a real OpenAI/Anthropic key, pick a model, confirm the AI panel
+header updates live while open when Settings changes it, send a message and confirm streaming +
+insert-into-field, remove a key and confirm the panel's empty state + deep-link back to Settings,
+a `Custom…` model that the API rejects surfaces a real error, and that provider/model/key persist
+across a relaunch). This wasn't done in this session because it requires typing a real key and
+driving the desktop UI interactively — see the plan's Task 6 Step 2 for the full checklist.
+
 ## Known gaps / not yet done
 
-- **M5 — Settings + onboarding.** No settings window exists. No first-run permission-grant flow.
-  ASR model is loaded from a hardcoded local `model/` directory copied in during dev — production
-  needs to download it on first run (PRD §6.2) with a progress UI. No model picker for the AI panel.
+- **M5 sub-project A manual verification** — see above.
+- **M5 sub-project B — remaining settings sections.** General (dynamic hotkeys, launch at login,
+  **Quit Synapse button** — see consequence above), Microphone, Capture, Snippets CRUD, Voice/ASR,
+  Permissions, About. Not started.
+- **M5 sub-project C — onboarding + model download.** No first-run permission-grant flow. ASR
+  model is loaded from a hardcoded local `model/` directory copied in during dev — production
+  needs to download it on first run (PRD §6.2) with a progress UI. Ship-blocker: the app cannot
+  currently be installed by anyone else. Not started.
 - **M6 — Packaging.** No `.dmg`/`.msi` build has been attempted. Ad-hoc signing for macOS, update
   check against GitHub releases, install docs — all still TODO.
-- **AI panel is unverified end-to-end** — see M4 note above.
 - macOS is entirely unverified — every macOS-specific code path (`#[cfg(target_os = "macos")]`,
   vibrancy, `tauri-nspanel`) needs testing on real hardware.
-- No automated tests exist anywhere; everything has been verified by manual click-through.
+- No frontend automated tests exist (by design for sub-project A — see the design doc's "Out of
+  scope"); Rust has 4 unit tests (`settings.rs` × 3, `ai.rs` × 1). Everything else is manual
+  click-through.
 
 ## Next steps, in order
 
-1. Finish verifying M4 (AI panel) end-to-end with a real API key.
-2. M5: settings window (sectioned sidebar per PRD §5), first-run onboarding (permissions +
-   model download), move the ASR model off the hardcoded dev path onto a real download flow.
-3. M6: packaging for Windows (`.msi`) at minimum; macOS packaging blocked on having a Mac to test.
-4. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
+1. Manual click-through of M5 sub-project A with a real API key (see above) — confirms the
+   settings foundation before building on top of it.
+2. M5 sub-project C next (per the agreed A → C → B → D build order): onboarding wizard, 640 MB
+   resumable model download with progress, move ASR off its hardcoded relative path. This is the
+   ship-blocker.
+3. M5 sub-project B: the remaining settings sections, including the Quit button.
+4. M6: packaging for Windows (`.msi`) at minimum; macOS packaging blocked on having a Mac to test.
+5. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
    it works — vibrancy, focus behavior, Gatekeeper/TCC flow, permissions.
