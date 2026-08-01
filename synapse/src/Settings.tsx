@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import AiSection from "./settings/AiSection";
+import VoiceSection from "./settings/VoiceSection";
 import type { Settings as SettingsData } from "./models";
 import "./Settings.css";
 
 // Only sections that actually exist are listed. Sub-project B adds General,
 // Microphone, Capture, Snippets, Voice, Permissions and About as they're built —
 // a sidebar full of "coming soon" rows is dead UI.
-const SECTIONS = [{ id: "ai", label: "AI" }] as const;
+const SECTIONS = [
+  { id: "ai", label: "AI" },
+  { id: "voice", label: "Voice" },
+] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -59,6 +63,7 @@ export default function Settings() {
       <main className="set-main">
         {error && <div className="set-error">{error}</div>}
         {section === "ai" && <AiSection settings={settings} onChange={update} />}
+        {section === "voice" && <VoiceSection />}
       </main>
     </div>
   );
