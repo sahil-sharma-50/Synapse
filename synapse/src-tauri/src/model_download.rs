@@ -44,6 +44,16 @@ pub fn download_one_file(
     let response = request
         .send()
         .map_err(|e| format!("{file}: request failed: {e}"))?;
+    if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        // A full-size `.part` file left over from a process that died
+        // between the final `write_all` and the rename to `final_path`
+        // requests a range starting at (or past) the resource's end, which
+        // a spec-compliant server answers with 416. There is nothing left
+        // to download — the `.part` file is already complete, so promote it
+        // directly instead of failing forever with no way to recover short
+        // of a human deleting the file by hand.
+        return std::fs::rename(&part_path, &final_path).map_err(|e| e.to_string());
+    }
     if !response.status().is_success() {
         return Err(format!("{file}: server returned {}", response.status()));
     }
@@ -285,5 +295,32 @@ mod tests {
             !dir.join("encoder-model.onnx").exists(),
             "incomplete download is never promoted to the final filename"
         );
+    }
+
+    #[test]
+    fn already_complete_part_file_is_promoted_without_re_downloading() {
+        let mut server = mockito::Server::new();
+        let full = b"0123456789ABCDEF";
+
+        let dir = temp_dir("already-complete-part");
+        std::fs::write(dir.join("vocab.txt.part"), full).unwrap();
+
+        // The `.part` file is already the full size, so a resume request
+        // asks for a range starting at (or past) the end of the resource.
+        // A spec-compliant server has nothing left to send and answers 416;
+        // no body is registered here, proving the fix never needs the mock
+        // to actually serve any bytes.
+        let _m = server
+            .mock("GET", "/vocab.txt")
+            .match_header("range", format!("bytes={}-", full.len()).as_str())
+            .with_status(416)
+            .create();
+
+        let client = reqwest::blocking::Client::new();
+        download_one_file(&client, &server.url(), &dir, "vocab.txt", |_, _| {})
+            .expect("leftover complete .part file is promoted, not treated as an error");
+
+        assert_eq!(std::fs::read(dir.join("vocab.txt")).unwrap(), full);
+        assert!(!dir.join("vocab.txt.part").exists(), "part file is renamed away");
     }
 }
