@@ -6,8 +6,15 @@ export interface AiSettings {
   openai_model: string;
 }
 
+export interface TtsSettings {
+  voice: string;
+}
+
+export const TTS_VOICES = ["alba", "giovanni", "lola", "juergen", "rafael", "estelle"] as const;
+
 export interface Settings {
   ai: AiSettings;
+  tts: TtsSettings;
   onboarding_complete: boolean;
 }
 

@@ -1,7 +1,15 @@
 import { formatBytes, useModelDownload } from "../modelDownload";
+import { useTtsSetup } from "../ttsSetup";
+import { TTS_VOICES, type Settings } from "../models";
 
-export default function VoiceSection() {
+interface VoiceSectionProps {
+  settings: Settings;
+  onChange: (settings: Settings) => void;
+}
+
+export default function VoiceSection({ settings, onChange }: VoiceSectionProps) {
   const model = useModelDownload();
+  const tts = useTtsSetup();
 
   return (
     <div className="set-section">
@@ -43,6 +51,51 @@ export default function VoiceSection() {
 
       <p className="set-hint">
         Speech-to-Text runs fully offline using this local model, required for dictation.
+      </p>
+
+      <div className="set-row">
+        <span className="set-label">Text-to-Speech engine</span>
+        <div className="set-key">
+          <span className={`set-badge ${tts.ready ? "set-ok" : "set-missing"}`}>
+            {tts.ready ? "Downloaded" : "Not downloaded"}
+          </span>
+          {!tts.downloading && (
+            <button className="set-btn" onClick={tts.start}>
+              {tts.ready ? "Re-download" : "Download (~1-2 GB)"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {tts.downloading && (
+        <div className="set-progress">
+          <div className="set-meter set-meter-idle" />
+          <div className="set-progress-foot">
+            <span>{tts.stageLabel || "Starting…"}</span>
+          </div>
+        </div>
+      )}
+      {tts.error && <div className="set-error">{tts.error}</div>}
+
+      <div className="set-row">
+        <span className="set-label">Voice</span>
+        <select
+          className="set-select"
+          disabled={!tts.ready}
+          value={settings.tts.voice}
+          onChange={(e) => onChange({ ...settings, tts: { ...settings.tts, voice: e.target.value } })}
+        >
+          {TTS_VOICES.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <p className="set-hint">
+        "Speak Selected Text" and reading AI responses aloud both use this voice once downloaded,
+        falling back to your OS's built-in voice otherwise.
       </p>
     </div>
   );

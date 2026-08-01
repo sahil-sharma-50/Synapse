@@ -63,7 +63,7 @@ export default function Settings() {
       <main className="set-main">
         {error && <div className="set-error">{error}</div>}
         {section === "ai" && <AiSection settings={settings} onChange={update} />}
-        {section === "voice" && <VoiceSection />}
+        {section === "voice" && <VoiceSection settings={settings} onChange={update} />}
       </main>
     </div>
   );
