@@ -12,6 +12,8 @@ pub struct Settings {
     pub ai: AiSettings,
     #[serde(default)]
     pub onboarding_complete: bool,
+    #[serde(default)]
+    pub tts: TtsSettings,
 }
 
 /// Every field carries a `serde` default. Sub-projects B, C and D each add
@@ -57,6 +59,22 @@ impl AiSettings {
             crate::ai::Provider::Anthropic => &self.anthropic_model,
             crate::ai::Provider::Openai => &self.openai_model,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TtsSettings {
+    #[serde(default = "default_voice")]
+    pub voice: String,
+}
+
+fn default_voice() -> String {
+    "alba".to_string()
+}
+
+impl Default for TtsSettings {
+    fn default() -> Self {
+        Self { voice: default_voice() }
     }
 }
 
@@ -189,5 +207,28 @@ mod tests {
 
         let reloaded = load(&path);
         assert!(reloaded.onboarding_complete, "persists across a reload");
+    }
+
+    #[test]
+    fn tts_voice_defaults_and_persists() {
+        let path = temp_dir("tts-voice").join("settings.json");
+
+        let mut settings = load(&path);
+        assert_eq!(settings.tts.voice, "alba", "defaults to alba for a fresh install");
+
+        settings.tts.voice = "giovanni".to_string();
+        save(&path, &settings).expect("save settings");
+
+        let reloaded = load(&path);
+        assert_eq!(reloaded.tts.voice, "giovanni", "persists across a reload");
+    }
+
+    #[test]
+    fn tts_settings_missing_from_file_defaults_gracefully() {
+        let path = temp_dir("tts-missing").join("settings.json");
+        std::fs::write(&path, r#"{"ai":{"provider":"anthropic"}}"#).expect("write settings");
+
+        let settings = load(&path);
+        assert_eq!(settings.tts.voice, "alba", "missing tts section defaults, does not fail parse");
     }
 }
