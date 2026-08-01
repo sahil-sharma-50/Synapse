@@ -4,10 +4,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings } from "./models";
 import { formatBytes, useModelDownload } from "./modelDownload";
+import { useTtsSetup } from "./ttsSetup";
 import logo from "./assets/synapse.png";
 import "./Onboarding.css";
 
-const STEPS = ["welcome", "mic", "model", "done"] as const;
+const STEPS = ["welcome", "mic", "model", "voice-engine", "done"] as const;
 type Step = (typeof STEPS)[number];
 type MicState = "idle" | "checking" | "granted" | "denied";
 
@@ -15,6 +16,7 @@ const STEP_LABELS: Record<Step, string> = {
   welcome: "Welcome",
   mic: "Microphone",
   model: "Model",
+  "voice-engine": "Voice",
   done: "Finish",
 };
 
@@ -29,6 +31,7 @@ export default function Onboarding() {
   const [micState, setMicState] = useState<MicState>("idle");
   const [finishError, setFinishError] = useState("");
   const model = useModelDownload();
+  const tts = useTtsSetup();
 
   const stepIndex = STEPS.indexOf(step);
 
@@ -202,6 +205,47 @@ export default function Onboarding() {
           </div>
         )}
 
+        {step === "voice-engine" && (
+          <div className="ob-step">
+            <h1 className="ob-title">Speak Selected Text (optional)</h1>
+            <p className="ob-text">
+              Select text anywhere and have Synapse read it aloud. This downloads a self-contained
+              speech engine, roughly 1-2 GB — optional, and you can grab it later from Settings → Voice
+              instead.
+            </p>
+
+            <div className={`ob-card ${tts.ready ? "ob-card-ok" : ""}`}>
+              {tts.ready ? (
+                <>
+                  <div className="ob-card-row">
+                    <span className="ob-pill ob-pill-ok">Installed</span>
+                  </div>
+                  <p className="ob-card-note">The voice engine is ready to use.</p>
+                </>
+              ) : tts.downloading ? (
+                <>
+                  <div className="ob-meter-head">
+                    <span className="ob-meter-pct">{tts.stageLabel || "Starting…"}</span>
+                  </div>
+                  <div className="ob-meter ob-meter-idle" />
+                </>
+              ) : (
+                <>
+                  <div className="ob-card-row">
+                    <span className="ob-pill">Not downloaded</span>
+                    <button className="ob-btn ob-btn-sm" onClick={tts.start}>
+                      {tts.error ? "Try again" : "Download now"}
+                    </button>
+                  </div>
+                  <p className="ob-card-note">
+                    {tts.error || "You can skip this and grab it later from Settings → Voice."}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {step === "done" && (
           <div className="ob-step">
             <div className="ob-hero">
@@ -254,7 +298,8 @@ export default function Onboarding() {
                 blocking the wizard on it would only trap the user. */}
             {step === "welcome"
               ? "Get started"
-              : step === "model" && !model.ready && !model.downloading
+              : (step === "model" && !model.ready && !model.downloading) ||
+                  (step === "voice-engine" && !tts.ready && !tts.downloading)
                 ? "Skip for now"
                 : "Continue"}
           </button>
