@@ -98,39 +98,74 @@ struct SidecarProcess {
 /// `rodio::OutputStream` wraps a platform audio handle (`cpal::Stream`) that
 /// is `!Send` on every backend (it carries a raw pointer marker so it can
 /// never be sent to, or accessed from, more than one thread at a time by
-/// the type system's own rules). Tauri's managed `State`, however, requires
-/// `TtsSidecar: Send + Sync` so it can be handed to command handlers that
-/// may run on any thread pool worker.
+/// the type system's own rules) — on Windows the underlying WASAPI/COM audio
+/// handles have thread affinity, so even *dropping* one on a different
+/// thread than it was created on is unsound.
 ///
-/// This is sound here because the stream is never actually touched
-/// concurrently: it's created and stored behind `TtsSidecar::stream`'s
-/// `Mutex` in `speak()`, and from then on it is only ever kept alive to
-/// prevent playback from stopping — nothing reads from or calls methods on
-/// it again after that point. The `Mutex` still gives us the exclusion the
-/// type system would otherwise provide; this wrapper only asserts that
-/// *moving* the value across threads (which happens when it's stored into
-/// or dropped from the shared state) is fine.
-struct SendOutputStream(rodio::OutputStream);
-// Safety: see the doc comment above — the stream is move-only shared state
-// behind a `Mutex`, never accessed concurrently from multiple threads.
-unsafe impl Send for SendOutputStream {}
+/// Instead of asserting `Send` on the stream, playback lives entirely on one
+/// dedicated background thread spawned once in `TtsSidecar::default()`. That
+/// thread owns creation, playback, and drop of the `OutputStream`/`Sink` as
+/// plain local variables — nothing audio-related ever crosses a thread
+/// boundary as a value. `speak()` (which may run on any Tauri worker thread)
+/// only ever sends a `PlaybackCommand` describing *what* to play down an
+/// `mpsc` channel; the dedicated thread does the actual playing.
+enum PlaybackCommand {
+    Play(std::path::PathBuf),
+    Stop,
+}
 
-/// Owns the long-lived Python sidecar and the currently-playing audio sink.
-/// One instance lives in Tauri's managed state for the app's lifetime.
+/// Owns the long-lived Python sidecar and a channel to the dedicated audio
+/// playback thread. One instance lives in Tauri's managed state for the
+/// app's lifetime.
 pub struct TtsSidecar {
     process: Mutex<Option<SidecarProcess>>,
-    sink: Mutex<Option<rodio::Sink>>,
-    // Kept alive alongside `sink` — dropping the OutputStream stops playback.
-    stream: Mutex<Option<SendOutputStream>>,
+    audio_tx: std::sync::mpsc::Sender<PlaybackCommand>,
     generation: AtomicU64,
 }
 
 impl Default for TtsSidecar {
     fn default() -> Self {
+        let (audio_tx, audio_rx) = std::sync::mpsc::channel::<PlaybackCommand>();
+
+        // The one and only thread that ever touches OutputStream/Sink. Both
+        // are kept as local variables here — never stored in shared state —
+        // so creation, playback, and drop all happen on this same thread.
+        std::thread::spawn(move || {
+            let mut current: Option<(rodio::OutputStream, rodio::Sink)> = None;
+            for cmd in audio_rx {
+                match cmd {
+                    PlaybackCommand::Stop => {
+                        // Dropping the taken value here stops playback and
+                        // tears down the OutputStream, both on this thread.
+                        drop(current.take());
+                    }
+                    PlaybackCommand::Play(path) => {
+                        // Drop any previous stream/sink before creating the
+                        // new one — still on this thread.
+                        drop(current.take());
+                        let played = (|| -> Result<(rodio::OutputStream, rodio::Sink), String> {
+                            let (stream, handle) =
+                                rodio::OutputStream::try_default().map_err(|e| e.to_string())?;
+                            let sink = rodio::Sink::try_new(&handle).map_err(|e| e.to_string())?;
+                            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+                            let source = rodio::Decoder::new(std::io::BufReader::new(file))
+                                .map_err(|e| e.to_string())?;
+                            sink.append(source);
+                            Ok((stream, sink))
+                        })();
+                        if let Ok(pair) = played {
+                            current = Some(pair);
+                        } else if let Err(e) = played {
+                            eprintln!("tts playback failed: {e}");
+                        }
+                    }
+                }
+            }
+        });
+
         Self {
             process: Mutex::new(None),
-            sink: Mutex::new(None),
-            stream: Mutex::new(None),
+            audio_tx,
             generation: AtomicU64::new(0),
         }
     }
@@ -176,11 +211,9 @@ impl TtsSidecar {
         voice: &str,
         out_dir: &std::path::Path,
     ) -> Result<(), String> {
-        if let Ok(mut sink) = self.sink.lock() {
-            if let Some(s) = sink.take() {
-                s.stop();
-            }
-        }
+        // Stop any currently-playing audio. The actual `Sink`/`OutputStream`
+        // teardown happens on the dedicated audio thread, not here.
+        let _ = self.audio_tx.send(PlaybackCommand::Stop);
 
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.ensure_process(python_path, sidecar_path)?;
@@ -225,18 +258,12 @@ impl TtsSidecar {
             return Err(response.message.unwrap_or_else(|| "tts synthesis failed".to_string()));
         }
 
-        let (stream, handle) = rodio::OutputStream::try_default().map_err(|e| e.to_string())?;
-        let sink = rodio::Sink::try_new(&handle).map_err(|e| e.to_string())?;
-        let file = std::fs::File::open(&out_path).map_err(|e| e.to_string())?;
-        let source = rodio::Decoder::new(std::io::BufReader::new(file)).map_err(|e| e.to_string())?;
-        sink.append(source);
-
-        if let Ok(mut s) = self.sink.lock() {
-            *s = Some(sink);
-        }
-        if let Ok(mut st) = self.stream.lock() {
-            *st = Some(SendOutputStream(stream));
-        }
+        // Hand the WAV path to the dedicated audio thread — the OutputStream
+        // and Sink themselves are created, played, and dropped there, never
+        // here.
+        self.audio_tx
+            .send(PlaybackCommand::Play(out_path))
+            .map_err(|_| "audio playback thread is gone".to_string())?;
 
         Ok(())
     }
