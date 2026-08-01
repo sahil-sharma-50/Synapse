@@ -7,6 +7,7 @@ mod screenshot;
 mod snippets;
 mod settings;
 mod tts;
+mod tts_pocket;
 
 use tauri::{
     menu::{Menu, MenuItem},
