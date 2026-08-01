@@ -276,9 +276,21 @@ fn stop_dictation() {
     asr::request_stop();
 }
 
+/// Broadcasts `settings-changed` (even though settings.json itself didn't
+/// change) so any open AI panel re-checks `provider_status` and clears its
+/// "No API key set" state without waiting for a relaunch or an unrelated
+/// settings save (see `update_settings` for the same pattern).
+fn emit_settings_changed(app: &tauri::AppHandle) {
+    if let Ok(path) = settings_path(app) {
+        let _ = app.emit("settings-changed", settings::load(&path));
+    }
+}
+
 #[tauri::command]
-fn set_api_key(provider: String, key: String) -> Result<(), String> {
-    ai::set_api_key(ai::Provider::from_str(&provider)?, &key)
+fn set_api_key(app: tauri::AppHandle, provider: String, key: String) -> Result<(), String> {
+    ai::set_api_key(ai::Provider::from_str(&provider)?, &key)?;
+    emit_settings_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -326,27 +338,37 @@ fn open_settings(app: tauri::AppHandle, section: Option<String>) {
 /// Required once Settings owns key management: with no inline form to overwrite
 /// a key, "remove" is the only way to clear one.
 #[tauri::command]
-fn delete_api_key(provider: String) -> Result<(), String> {
-    ai::delete_api_key(ai::Provider::from_str(&provider)?)
+fn delete_api_key(app: tauri::AppHandle, provider: String) -> Result<(), String> {
+    ai::delete_api_key(ai::Provider::from_str(&provider)?)?;
+    emit_settings_changed(&app);
+    Ok(())
 }
 
+/// Resolves provider and model itself from settings rather than trusting a
+/// frontend-supplied provider: the AI panel may invoke this before its own
+/// `get_settings` call has resolved, and a missing/undefined argument would
+/// fail Tauri's argument deserialization before this function body ever runs
+/// — leaving `streaming` stuck `true` client-side with no `ai-done`/`ai-error`
+/// event to clear it. Resolving server-side eliminates that case entirely.
 #[tauri::command]
-fn send_ai_message(app: tauri::AppHandle, provider: String, prompt: String) {
+fn send_ai_message(app: tauri::AppHandle, prompt: String) {
     std::thread::spawn(move || {
-        let provider = match ai::Provider::from_str(&provider) {
+        let path = match settings_path(&app) {
+            Ok(path) => path,
+            Err(e) => {
+                let _ = app.emit("ai-error", e);
+                return;
+            }
+        };
+        let ai_settings = settings::load(&path).ai;
+        let provider = match ai::Provider::from_str(&ai_settings.provider) {
             Ok(p) => p,
             Err(e) => {
                 let _ = app.emit("ai-error", e);
                 return;
             }
         };
-        let model = match settings_path(&app) {
-            Ok(path) => settings::load(&path).ai.model_for(provider).to_string(),
-            Err(e) => {
-                let _ = app.emit("ai-error", e);
-                return;
-            }
-        };
+        let model = ai_settings.model_for(provider).to_string();
         match ai::stream_chat(&app, provider, &model, &prompt) {
             Ok(text) => {
                 let _ = app.emit("ai-done", text);

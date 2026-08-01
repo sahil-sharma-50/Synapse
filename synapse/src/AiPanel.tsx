@@ -67,7 +67,7 @@ export default function AiPanel() {
     setResponse("");
     setError("");
     setStreaming(true);
-    invoke("send_ai_message", { provider: settings?.ai.provider, prompt: text });
+    invoke("send_ai_message", { prompt: text });
   }
 
   async function recordAndSend() {

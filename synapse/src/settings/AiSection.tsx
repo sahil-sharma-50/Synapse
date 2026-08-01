@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MODEL_CATALOG,
@@ -31,6 +31,31 @@ export default function AiSection({
   // dropdown must land on "Custom…" and reveal the field pre-filled.
   const isCustom = !catalog.includes(model);
 
+  // Local-only UI state for the custom-model text field. Kept separate from
+  // `settings` so typing doesn't write settings.json (and broadcast
+  // `settings-changed`) on every keystroke — only a debounced commit or blur
+  // does. `customPicked` tracks "user just chose Custom… from the dropdown"
+  // before they've typed anything, so the field can appear without ever
+  // persisting an empty model string.
+  const [customPicked, setCustomPicked] = useState(false);
+  const [customDraft, setCustomDraft] = useState(isCustom ? model : "");
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Switching provider swaps which model this UI is editing, so the local
+  // draft has to be re-derived for the new provider rather than carrying
+  // over stale text from the previous one.
+  useEffect(() => {
+    setCustomPicked(false);
+    setCustomDraft(isCustom ? model : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
+
+  useEffect(() => {
+    return () => {
+      if (commitTimer.current) clearTimeout(commitTimer.current);
+    };
+  }, []);
+
   function refreshStatus() {
     invoke<Record<Provider, boolean>>("provider_status").then(setStatus);
   }
@@ -45,6 +70,39 @@ export default function AiSection({
     const key = provider === "anthropic" ? "anthropic_model" : "openai_model";
     onChange({ ...settings, ai: { ...settings.ai, [key]: next } });
   }
+
+  function selectModel(value: string) {
+    if (value === CUSTOM) {
+      // Reveal the custom field without persisting an empty model string —
+      // only committing actual typed text should trigger a settings write.
+      setCustomPicked(true);
+      setCustomDraft(isCustom ? model : "");
+      return;
+    }
+    setCustomPicked(false);
+    setModel(value);
+  }
+
+  function commitCustom(value: string) {
+    const trimmed = value.trim();
+    // Never persist an empty custom model — it would be sent to the API as
+    // an invalid model string.
+    if (!trimmed) return;
+    setModel(trimmed);
+  }
+
+  function onCustomInput(value: string) {
+    setCustomDraft(value);
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => commitCustom(value), 400);
+  }
+
+  function onCustomBlur() {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitCustom(customDraft);
+  }
+
+  const showCustomField = isCustom || customPicked;
 
   async function saveKey() {
     if (!keyInput.trim()) return;
@@ -91,10 +149,8 @@ export default function AiSection({
         <span className="set-label">Model</span>
         <select
           className="set-input"
-          value={isCustom ? CUSTOM : model}
-          onChange={(e) =>
-            setModel(e.target.value === CUSTOM ? "" : e.target.value)
-          }
+          value={showCustomField ? CUSTOM : model}
+          onChange={(e) => selectModel(e.target.value)}
         >
           {catalog.map((m) => (
             <option key={m} value={m}>
@@ -105,14 +161,15 @@ export default function AiSection({
         </select>
       </label>
 
-      {isCustom && (
+      {showCustomField && (
         <label className="set-row">
           <span className="set-label" />
           <input
             className="set-input"
             placeholder="Model ID"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
+            value={customDraft}
+            onChange={(e) => onCustomInput(e.target.value)}
+            onBlur={onCustomBlur}
           />
         </label>
       )}

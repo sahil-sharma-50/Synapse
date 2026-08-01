@@ -66,11 +66,28 @@ pub fn load(path: &Path) -> Settings {
         return Settings::default();
     };
     match serde_json::from_str(&content) {
-        Ok(settings) => settings,
+        Ok(mut settings) => {
+            normalize(&mut settings);
+            settings
+        }
         Err(e) => {
             eprintln!("[synapse] settings.json unparseable ({e}) — using defaults");
             Settings::default()
         }
+    }
+}
+
+/// `#[serde(default = ...)]` only fires for a *missing* field, not an
+/// unrecognised one — a hand-edited or future settings.json with
+/// `"provider": "gemini"` parses fine as a plain `String` and would otherwise
+/// reach the frontend, where `MODEL_CATALOG[provider]` is `undefined` and
+/// crashes the Settings window. Fold any value `Provider::from_str` doesn't
+/// recognise back to the default here so the guarantee is enforced once, in
+/// the one place that owns settings loading, rather than relying on every
+/// consumer to defend against it.
+fn normalize(settings: &mut Settings) {
+    if crate::ai::Provider::from_str(&settings.ai.provider).is_err() {
+        settings.ai.provider = default_provider();
     }
 }
 
@@ -147,5 +164,14 @@ mod tests {
             "unparseable file is preserved before being overwritten"
         );
         assert!(load(&path).ai.provider == "anthropic", "new file is readable");
+    }
+
+    #[test]
+    fn unknown_provider_falls_back_to_default() {
+        let path = temp_dir("unknown-provider").join("settings.json");
+        std::fs::write(&path, r#"{"ai":{"provider":"gemini"}}"#).expect("write settings");
+
+        let settings = load(&path);
+        assert_eq!(settings.ai.provider, "anthropic");
     }
 }
