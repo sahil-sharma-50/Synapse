@@ -48,7 +48,10 @@ export default function VoiceSection() {
   function download() {
     setError("");
     setDownloading(true);
-    invoke("download_model").catch((e) => setError(String(e)));
+    invoke("download_model").catch((e) => {
+      setDownloading(false);
+      setError(String(e));
+    });
   }
 
   return (

@@ -28,6 +28,7 @@ export default function Onboarding() {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const [modelReady, setModelReady] = useState(false);
+  const [finishError, setFinishError] = useState("");
 
   useEffect(() => {
     invoke<boolean>("model_status").then(setModelReady);
@@ -69,13 +70,22 @@ export default function Onboarding() {
   function startDownload() {
     setDownloadError("");
     setDownloading(true);
-    invoke("download_model");
+    invoke("download_model").catch((e) => {
+      setDownloading(false);
+      setDownloadError(String(e));
+    });
   }
 
   async function finish() {
-    const settings = await invoke<Settings>("get_settings");
-    await invoke("update_settings", { settings: { ...settings, onboarding_complete: true } });
-    getCurrentWindow().close();
+    setFinishError("");
+    try {
+      const settings = await invoke<Settings>("get_settings");
+      await invoke("update_settings", { settings: { ...settings, onboarding_complete: true } });
+      getCurrentWindow().close();
+    } catch (e) {
+      console.error("[synapse] failed to finish onboarding:", e);
+      setFinishError(String(e));
+    }
   }
 
   return (
@@ -185,6 +195,11 @@ export default function Onboarding() {
             Press Ctrl+Alt+Enter anytime to open the wheel, or Ctrl+Alt+D to start dictating
             directly.
           </p>
+          {finishError && (
+            <div className="ob-status ob-warn">
+              <span>{finishError}</span>
+            </div>
+          )}
           <button className="ob-btn" onClick={finish}>
             Open Synapse
           </button>
