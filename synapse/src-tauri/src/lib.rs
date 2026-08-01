@@ -4,6 +4,7 @@ mod inject;
 mod notes;
 mod screenshot;
 mod snippets;
+mod settings;
 mod tts;
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
