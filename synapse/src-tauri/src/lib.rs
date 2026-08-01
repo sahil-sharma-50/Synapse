@@ -9,6 +9,23 @@ mod settings;
 mod tts;
 mod tts_pocket;
 
+// TODO(Task 9): replace this inline stub with `mod tts_setup;` pointing at the
+// real `tts_setup.rs` file once Task 9 lands, and delete this block.
+mod tts_setup {
+    pub fn is_ready(_app: &tauri::AppHandle) -> bool {
+        false
+    }
+    pub fn python_path(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+        Err("tts_setup not implemented yet".to_string())
+    }
+    pub fn sidecar_script_path(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+        Err("tts_setup not implemented yet".to_string())
+    }
+    pub fn tts_scratch_dir(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+        Err("tts_setup not implemented yet".to_string())
+    }
+}
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -172,6 +189,29 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
         "settings" => {
             hide_overlay(&app);
             show_utility_window(&app, SETTINGS_LABEL);
+        }
+        "speak-selected" => {
+            hide_overlay(&app);
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(180));
+                #[cfg(target_os = "windows")]
+                restore_previous_focus();
+                std::thread::sleep(std::time::Duration::from_millis(80));
+
+                match inject::copy_selection(&app) {
+                    Ok(Some(text)) => {
+                        let app_for_speak = app.clone();
+                        let sidecar = app_for_speak.state::<tts_pocket::TtsSidecar>();
+                        speak_text(app_for_speak.clone(), sidecar, text);
+                    }
+                    Ok(None) => show_toast(&app, "No text selected".to_string()),
+                    Err(e) => {
+                        eprintln!("[synapse] selection capture failed: {e}");
+                        show_toast(&app, "Couldn't read selected text".to_string());
+                    }
+                }
+            });
         }
         other => {
             println!("[synapse] no handler yet for wedge: {other}");
@@ -472,10 +512,27 @@ fn check_mic_access() -> Result<(), String> {
     asr::check_mic_access()
 }
 
-/// Speaks text via OS-native TTS on a background thread so the UI isn't
-/// blocked for the duration of playback.
+/// Speaks text via pocket-tts when its engine is downloaded, falling back to
+/// OS-native TTS otherwise (not downloaded yet, or the sidecar just failed).
+/// Runs on a background thread so the UI isn't blocked for the duration.
 #[tauri::command]
-fn speak_text(text: String) {
+fn speak_text(app: tauri::AppHandle, sidecar: tauri::State<tts_pocket::TtsSidecar>, text: String) {
+    let sidecar = sidecar.inner();
+    if tts_setup::is_ready(&app) {
+        let voice = settings_path(&app)
+            .map(|p| settings::load(&p).tts.voice)
+            .unwrap_or_else(|_| "alba".to_string());
+        if let (Ok(python_path), Ok(sidecar_path), Ok(out_dir)) = (
+            tts_setup::python_path(&app),
+            tts_setup::sidecar_script_path(&app),
+            tts_setup::tts_scratch_dir(&app),
+        ) {
+            match sidecar.speak(&python_path, &sidecar_path, &text, &voice, &out_dir) {
+                Ok(()) => return,
+                Err(e) => eprintln!("[synapse] pocket-tts failed, falling back to OS TTS: {e}"),
+            }
+        }
+    }
     std::thread::spawn(move || {
         if let Err(e) = tts::speak(&text) {
             eprintln!("[synapse] TTS failed: {e}");
@@ -532,6 +589,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(tts_pocket::TtsSidecar::new())
         .invoke_handler(tauri::generate_handler![
             dismiss_overlay,
             select_wedge,

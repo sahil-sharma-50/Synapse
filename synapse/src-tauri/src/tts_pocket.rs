@@ -95,13 +95,33 @@ struct SidecarProcess {
     stdout: BufReader<ChildStdout>,
 }
 
+/// `rodio::OutputStream` wraps a platform audio handle (`cpal::Stream`) that
+/// is `!Send` on every backend (it carries a raw pointer marker so it can
+/// never be sent to, or accessed from, more than one thread at a time by
+/// the type system's own rules). Tauri's managed `State`, however, requires
+/// `TtsSidecar: Send + Sync` so it can be handed to command handlers that
+/// may run on any thread pool worker.
+///
+/// This is sound here because the stream is never actually touched
+/// concurrently: it's created and stored behind `TtsSidecar::stream`'s
+/// `Mutex` in `speak()`, and from then on it is only ever kept alive to
+/// prevent playback from stopping — nothing reads from or calls methods on
+/// it again after that point. The `Mutex` still gives us the exclusion the
+/// type system would otherwise provide; this wrapper only asserts that
+/// *moving* the value across threads (which happens when it's stored into
+/// or dropped from the shared state) is fine.
+struct SendOutputStream(rodio::OutputStream);
+// Safety: see the doc comment above — the stream is move-only shared state
+// behind a `Mutex`, never accessed concurrently from multiple threads.
+unsafe impl Send for SendOutputStream {}
+
 /// Owns the long-lived Python sidecar and the currently-playing audio sink.
 /// One instance lives in Tauri's managed state for the app's lifetime.
 pub struct TtsSidecar {
     process: Mutex<Option<SidecarProcess>>,
     sink: Mutex<Option<rodio::Sink>>,
     // Kept alive alongside `sink` — dropping the OutputStream stops playback.
-    stream: Mutex<Option<rodio::OutputStream>>,
+    stream: Mutex<Option<SendOutputStream>>,
     generation: AtomicU64,
 }
 
@@ -215,7 +235,7 @@ impl TtsSidecar {
             *s = Some(sink);
         }
         if let Ok(mut st) = self.stream.lock() {
-            *st = Some(stream);
+            *st = Some(SendOutputStream(stream));
         }
 
         Ok(())
