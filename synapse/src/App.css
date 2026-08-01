@@ -54,7 +54,7 @@ svg * {
 
 .wedge:hover .wedge-slice,
 .wedge-hovered .wedge-slice {
-  fill: rgba(90, 170, 255, 0.22);
+  fill: rgba(90, 170, 255, 0.65);
 }
 
 .wedge-icon path {

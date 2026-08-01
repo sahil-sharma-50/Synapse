@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "overlay", "notepad", "snippet-picker", "ai-panel"],
+  "description": "Capability for all Synapse windows",
+  "windows": ["overlay", "notepad", "snippet-picker", "ai-panel", "settings"],
   "permissions": [
     "core:default",
     "opener:default",

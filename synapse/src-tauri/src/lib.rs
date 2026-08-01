@@ -183,10 +183,22 @@ fn show_toast(app: &tauri::AppHandle, message: String) {
     hide_overlay(app);
 }
 
+/// Failures here are reported rather than swallowed: a window that silently
+/// refuses to appear is indistinguishable from a dead click, and tracking one
+/// down through a `let _ =` cost a full debug cycle once already.
 fn show_utility_window(app: &tauri::AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.show();
-        let _ = window.set_focus();
+    let Some(window) = app.get_webview_window(label) else {
+        eprintln!(
+            "[synapse] show_utility_window({label}): no such window (have: {:?})",
+            app.webview_windows().keys().collect::<Vec<_>>()
+        );
+        return;
+    };
+    if let Err(e) = window.show() {
+        eprintln!("[synapse] show_utility_window({label}): show failed: {e}");
+    }
+    if let Err(e) = window.set_focus() {
+        eprintln!("[synapse] show_utility_window({label}): set_focus failed: {e}");
     }
 }
 
