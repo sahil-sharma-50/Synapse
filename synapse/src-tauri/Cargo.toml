@@ -39,6 +39,8 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 # and reading it back always returns NoEntry. Features are per-target below.
 keyring = "3"
 rodio = "0.19"
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 mockito = "1"

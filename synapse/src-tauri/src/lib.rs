@@ -8,23 +8,7 @@ mod snippets;
 mod settings;
 mod tts;
 mod tts_pocket;
-
-// TODO(Task 9): replace this inline stub with `mod tts_setup;` pointing at the
-// real `tts_setup.rs` file once Task 9 lands, and delete this block.
-mod tts_setup {
-    pub fn is_ready(_app: &tauri::AppHandle) -> bool {
-        false
-    }
-    pub fn python_path(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        Err("tts_setup not implemented yet".to_string())
-    }
-    pub fn sidecar_script_path(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        Err("tts_setup not implemented yet".to_string())
-    }
-    pub fn tts_scratch_dir(_app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        Err("tts_setup not implemented yet".to_string())
-    }
-}
+mod tts_setup;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -462,6 +446,16 @@ fn download_model(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn tts_setup_status(app: tauri::AppHandle) -> bool {
+    tts_setup::is_ready(&app)
+}
+
+#[tauri::command]
+fn download_tts_engine(app: tauri::AppHandle) {
+    tts_setup::spawn_setup(app);
+}
+
 /// Resolves provider and model itself from settings rather than trusting a
 /// frontend-supplied provider: the AI panel may invoke this before its own
 /// `get_settings` call has resolved, and a missing/undefined argument would
@@ -613,7 +607,9 @@ pub fn run() {
             open_settings,
             delete_api_key,
             model_status,
-            download_model
+            download_model,
+            tts_setup_status,
+            download_tts_engine
         ])
         .setup(|app| {
             let model_dir = model_download::model_dir(app.handle())?;
