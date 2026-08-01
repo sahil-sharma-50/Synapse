@@ -10,6 +10,8 @@ use std::path::Path;
 pub struct Settings {
     #[serde(default)]
     pub ai: AiSettings,
+    #[serde(default)]
+    pub onboarding_complete: bool,
 }
 
 /// Every field carries a `serde` default. Sub-projects B, C and D each add
@@ -173,5 +175,19 @@ mod tests {
 
         let settings = load(&path);
         assert_eq!(settings.ai.provider, "anthropic");
+    }
+
+    #[test]
+    fn onboarding_complete_defaults_false_and_persists_true() {
+        let path = temp_dir("onboarding").join("settings.json");
+
+        let mut settings = load(&path);
+        assert!(!settings.onboarding_complete, "defaults false for a fresh install");
+
+        settings.onboarding_complete = true;
+        save(&path, &settings).expect("save settings");
+
+        let reloaded = load(&path);
+        assert!(reloaded.onboarding_complete, "persists across a reload");
     }
 }
