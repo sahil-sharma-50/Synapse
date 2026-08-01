@@ -369,6 +369,16 @@ fn model_status(app: tauri::AppHandle) -> Result<bool, String> {
 #[tauri::command]
 fn download_model(app: tauri::AppHandle) -> Result<(), String> {
     let dir = model_download::model_dir(&app)?;
+    // If the model is already fully present, this is a "Re-download" click,
+    // not a first-time download. `download_one_file`/`spawn_download` both
+    // treat an existing final file as already-done and skip it, so without
+    // this the button would be a silent no-op. Deleting the files first
+    // forces the real download logic (and its progress events) to run.
+    if model_download::is_downloaded(&dir) {
+        for file in model_download::MODEL_FILES {
+            let _ = std::fs::remove_file(dir.join(file));
+        }
+    }
     model_download::spawn_download(app, move || asr::preload_model(dir));
     Ok(())
 }
