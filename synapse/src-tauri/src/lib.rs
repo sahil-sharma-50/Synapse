@@ -1,6 +1,7 @@
 mod ai;
 mod asr;
 mod inject;
+mod model_download;
 mod notes;
 mod screenshot;
 mod snippets;
