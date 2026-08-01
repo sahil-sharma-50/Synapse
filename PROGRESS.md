@@ -3,8 +3,10 @@
 **Last updated:** 2026-08-01
 **Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
 foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);
-manual click-through with a real API key is still pending — see "Known gaps" below. M5's
-remaining sub-projects (B, C) and M6 (Packaging) not started.
+manual click-through with a real API key is still pending — see "Known gaps" below. M5
+sub-project C + M6 (onboarding wizard, resumable model download, Windows `.msi` packaging) is
+now shipped, clearing the ship-blocker — see "Known gaps" below for what's automated-verified vs.
+still a manual-only pass. M5 sub-project B (remaining settings sections) not started.
 
 Read `synapse_prd.md` (rewritten this session) and the plan file at
 `C:\Users\sahil\.claude\plans\so-i-am-working-ticklish-sunbeam.md` for full context/rationale.
@@ -182,18 +184,75 @@ a `Custom…` model that the API rejects surfaces a real error, and that provide
 across a relaunch). This wasn't done in this session because it requires typing a real key and
 driving the desktop UI interactively — see the plan's Task 6 Step 2 for the full checklist.
 
+## M5 sub-project C + M6 — onboarding, model download, packaging (shipped)
+
+Design/plan: `.superpowers/sdd/2026-08-01-onboarding-msi-packaging/`.
+
+- **`settings.rs`** — new `onboarding_complete: bool` field on `Settings` (defaults `false`),
+  following the same forward/backward-compat pattern sub-project A established.
+- **`model_download.rs`** — pure, Tauri-free resumable download module: issues a `Range` request
+  to resume an interrupted download, writes into a `.part` file so a crash mid-download can't be
+  mistaken for a complete model, rejects a truncated/short download instead of silently accepting
+  it, and skips the download entirely if the model is already present. Unit-tested against
+  `mockito` (resume-from-partial, truncation rejection, already-downloaded skip) — no real network
+  or Tauri runtime needed for these tests.
+- **Tauri wiring** — `model_status`/`download_model` commands and `model-download-progress` /
+  `model-download-done` / `model-download-error` events drive the frontend progress UI.
+  `asr.rs`'s previously-hardcoded relative `model/` path (a dev-only shortcut noted as a gap
+  above) is now resolved through Tauri's app-data directory, so the shipped app no longer depends
+  on a `model/` folder being manually copied next to the exe.
+- **`check_mic_access()`** — a mic permission pre-check for onboarding's microphone step, reusing
+  the existing `build_stream` helper from the M2 capture code rather than duplicating cpal setup.
+- **Onboarding window/lifecycle** — a dedicated Tauri window, auto-shown on first run whenever
+  `onboarding_complete` is `false`. Unlike the hide-on-close pattern used by Notepad/Snippet/AI/
+  Settings, this window is **destroyed** (not hidden) when closed — it only ever needs to run
+  once. Closing early (before finishing all steps) still marks onboarding complete, so a user who
+  bails out isn't re-prompted every launch.
+- **`Onboarding.tsx` / `.css`** — 4-step wizard: Welcome → Microphone → Model download → Done.
+  Dark theme styled to match the existing `Settings.css` look.
+- **`VoiceSection.tsx`** — a minimal Settings → Voice section, added as the "download later" entry
+  point for anyone who skipped the model-download step during onboarding.
+- **`.msi` packaging** — `tauri.conf.json`'s bundle target narrowed to `["msi"]`. A real
+  `npm run tauri build` was run in this dev environment and **did succeed**, producing
+  `synapse_0.1.0_x64_en-US.msi`.
+
+**Verified automated:** `model_download.rs`'s mockito test suite (resume, truncation rejection,
+already-downloaded skip), the `onboarding_complete` settings round-trip, `cargo build` and
+`npx tsc --noEmit` clean, and the real `.msi` build succeeding end-to-end.
+
+**Not yet verified — needs a human pass** (no GUI in this dev environment): double-clicking the
+built installer (SmartScreen prompt, per-user install with no UAC elevation, Start Menu shortcut,
+listing correctly under Windows Settings > Apps, clean uninstall), and — critically — a
+fresh-profile run of onboarding end-to-end with no pre-existing `settings.json` or model files, to
+confirm first-run detection and the full download-and-launch path actually work outside a dev
+environment that already has a model on disk.
+
+**Known minor/deferred items** (raised in task reviews, not blockers):
+- A small idempotency race window in `spawn_download`'s `AtomicBool` guard — low impact and
+  self-correcting (a duplicate spawn just resumes the same in-progress download).
+- The `model_status` command has the side effect of creating the model directory even for a
+  read-only status check — harmless, but worth tidying if `model_download.rs` gets touched again.
+- No automated tests for `spawn_download`/`model_dir`/`DownloadProgress` — they need a real or
+  mocked Tauri `AppHandle`, and the existing test harness (used for `settings.rs` and `ai.rs`,
+  both `&Path`/pure-Rust testable) isn't set up for that yet.
+- The `.set-section` CSS class was missing from `Settings.css` (a pre-existing gap that also
+  affected the earlier AI section) — fixed as part of this work.
+
 ## Known gaps / not yet done
 
 - **M5 sub-project A manual verification** — see above.
 - **M5 sub-project B — remaining settings sections.** General (dynamic hotkeys, launch at login,
   **Quit Synapse button** — see consequence above), Microphone, Capture, Snippets CRUD, Voice/ASR,
   Permissions, About. Not started.
-- **M5 sub-project C — onboarding + model download.** No first-run permission-grant flow. ASR
-  model is loaded from a hardcoded local `model/` directory copied in during dev — production
-  needs to download it on first run (PRD §6.2) with a progress UI. Ship-blocker: the app cannot
-  currently be installed by anyone else. Not started.
-- **M6 — Packaging.** No `.dmg`/`.msi` build has been attempted. Ad-hoc signing for macOS, update
-  check against GitHub releases, install docs — all still TODO.
+- **M5 sub-project C + M6 — onboarding, model download, packaging.** Shipped — see the write-up
+  below. Automated-verified: `model_download.rs`'s resumable-download logic (mockito-tested:
+  resume, truncation rejection, already-downloaded skip), `settings.rs`'s `onboarding_complete`
+  field, `cargo build`/`npx tsc --noEmit` clean, and a real `npm run tauri build` that did produce
+  `synapse_0.1.0_x64_en-US.msi`. **Still manual-only** (no GUI in this dev environment): the
+  installer double-click itself (SmartScreen prompt, per-user install with no UAC, Start Menu
+  shortcut, Windows Settings > Apps listing, uninstall) and a fresh-profile onboarding
+  end-to-end run with no pre-existing `settings.json`/model files. macOS `.dmg` packaging and
+  ad-hoc signing are still untouched (blocked on having a Mac to test, per the macOS gap below).
 - macOS is entirely unverified — every macOS-specific code path (`#[cfg(target_os = "macos")]`,
   vibrancy, `tauri-nspanel`) needs testing on real hardware.
 - No frontend automated tests exist (by design for sub-project A — see the design doc's "Out of
@@ -204,10 +263,11 @@ driving the desktop UI interactively — see the plan's Task 6 Step 2 for the fu
 
 1. Manual click-through of M5 sub-project A with a real API key (see above) — confirms the
    settings foundation before building on top of it.
-2. M5 sub-project C next (per the agreed A → C → B → D build order): onboarding wizard, 640 MB
-   resumable model download with progress, move ASR off its hardcoded relative path. This is the
-   ship-blocker.
+2. Human verification pass for M5 sub-project C + M6 (see the write-up below): install the built
+   `.msi` on a clean/fresh profile, walk through onboarding end-to-end with no pre-existing
+   settings/model files, and confirm the standard installer behaviors (SmartScreen, per-user
+   install, Start Menu shortcut, Apps listing, uninstall).
 3. M5 sub-project B: the remaining settings sections, including the Quit button.
-4. M6: packaging for Windows (`.msi`) at minimum; macOS packaging blocked on having a Mac to test.
+4. macOS packaging (`.dmg`, ad-hoc signing) — blocked on having a Mac to test.
 5. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
    it works — vibrancy, focus behavior, Gatekeeper/TCC flow, permissions.
