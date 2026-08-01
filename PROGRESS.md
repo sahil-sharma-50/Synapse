@@ -4,7 +4,7 @@
 **Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
 foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);
 manual click-through with a real API key is still pending — see "Known gaps" below. M5
-sub-project C + M6 (onboarding wizard, resumable model download, Windows `.msi` packaging) is
+sub-project C + M6 (onboarding wizard, resumable model download, Windows `.exe` installer packaging) is
 now shipped, clearing the ship-blocker — see "Known gaps" below for what's automated-verified vs.
 still a manual-only pass. M5 sub-project B (remaining settings sections) not started.
 
@@ -237,6 +237,50 @@ environment that already has a model on disk.
   both `&Path`/pure-Rust testable) isn't set up for that yet.
 - The `.set-section` CSS class was missing from `Settings.css` (a pre-existing gap that also
   affected the earlier AI section) — fixed as part of this work.
+
+## Installer + first-run polish pass (2026-08-01)
+
+Driven by a real install/first-run walkthrough on Windows 11. Four of the five reported
+symptoms turned out to have distinct root causes, all now fixed and verified on-machine.
+
+- **Installer switched from WiX `.msi` to NSIS `.exe`** (`bundle.targets: ["nsis"]`). The WiX
+  dialogs (lowercase "synapse" title, red default banner, Windows-2000-era folder browser) are
+  fixed by WiX itself and can only be rebranded, not modernized. NSIS is the format Tauri styles
+  properly. `productName` is now `Synapse` (capital S — it drives every installer string and the
+  install path), with `installer/header.bmp` (150×57) and `installer/sidebar.bmp` (164×314)
+  generated from `assets/synapse_icon.png` by `src-tauri/installer/make-art.ps1` — rerun that
+  script if the logo changes. `installMode: currentUser` keeps the no-UAC install behavior.
+- **"12 MB / 0 MB" progress** — `spawn_download`'s HEAD size probe used reqwest's
+  `Response::content_length()`, which reports the *body* length; a HEAD reply has no body, so
+  every file's size came back as 0 and the overall total was 0. Replaced with
+  `remote_file_size()`, which reads the `Content-Length` / `X-Linked-Size` headers (Hugging Face
+  reports the real size of LFS/Xet files only in the latter). Three mockito tests cover it.
+- **The downloaded model could never load.** `MODEL_FILES` listed the repo's fp32
+  `encoder-model.onnx`, which is a 42MB graph stub whose weights live in a separate 2.4GB
+  `encoder-model.onnx.data` that was never downloaded — so ASR failed at startup with "External
+  data path does not exist" on every install. Switched to the self-contained int8 variants
+  (~630MB total, which is what the docs' "690MB" always meant). `remove_stale_files()` deletes
+  the fp32 leftovers on startup and before each download, because parakeet-rs prefers the
+  fp32 filename and a stale stub shadows a good download.
+- **Dead "finish" button** — `core:window:allow-close` is not part of `core:default`, so
+  `getCurrentWindow().close()` rejected with "window.close not allowed" and nothing happened.
+  Added to `capabilities/default.json`; the promise is now awaited so any future failure shows
+  in the UI instead of vanishing as an unhandled rejection. Button relabeled **Finish**.
+- **Onboarding redesigned** — step rail, hero mark, feature cards, real progress meter
+  (percentage, MB of MB, transfer rate, ETA, indeterminate sweep until the total is known), and
+  a mic step that explains what the Windows prompt will do *before* triggering it. Download and
+  progress logic now lives in `src/modelDownload.ts` (`useModelDownload`), shared with
+  Settings → Voice so both surfaces show the same meter.
+
+**Verified on-machine:** 15 Rust tests pass; `npm run tauri build` produces
+`Synapse_0.1.0_x64-setup.exe`; the installer's welcome page shows the branded sidebar and
+"Welcome to Synapse Setup"; all four onboarding steps walked through in a real window; the model
+downloaded end-to-end (631 MB, correct totals throughout) and logged "ASR model loaded"; Finish
+closed the window and persisted `onboarding_complete`.
+
+**Not verified:** a full install → launch → uninstall cycle from the new NSIS installer, and how
+the header art reads on the fresh-install pages (only the "already installed" maintenance page
+was seen).
 
 ## Known gaps / not yet done
 

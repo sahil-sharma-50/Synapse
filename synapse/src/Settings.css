@@ -133,6 +133,50 @@
   color: #eaeaea;
 }
 
+.set-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.set-meter {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.set-meter-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #4b8ef0, #6fc0ff);
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Total size not known yet — sweep instead of claiming a percentage. */
+.set-meter-idle .set-meter-fill {
+  width: 38%;
+  animation: set-sweep 1.25s ease-in-out infinite;
+}
+
+@keyframes set-sweep {
+  from {
+    transform: translateX(-105%);
+  }
+  to {
+    transform: translateX(275%);
+  }
+}
+
+.set-progress-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
 .set-error {
   color: #ff8a8a;
   font-size: 12px;

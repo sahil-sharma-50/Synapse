@@ -85,7 +85,7 @@ export default function SnippetPicker() {
       <div className="snippet-list">
         {filtered.length === 0 && (
           <div className="snippet-empty">
-            {snippets.length === 0 ? "No snippets yet — click + to add one" : "No matches"}
+            {snippets.length === 0 ? "No snippets yet, click + to add one" : "No matches"}
           </div>
         )}
         {filtered.map((s) => (

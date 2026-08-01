@@ -8,7 +8,11 @@ mod snippets;
 mod settings;
 mod tts;
 
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
+};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const OVERLAY_LABEL: &str = "overlay";
@@ -17,6 +21,9 @@ const SNIPPET_LABEL: &str = "snippet-picker";
 const AI_LABEL: &str = "ai-panel";
 const SETTINGS_LABEL: &str = "settings";
 const ONBOARDING_LABEL: &str = "onboarding";
+/// Written by the NSIS post-install hook (see `installer/hooks.nsh`), consumed
+/// on the next launch. Lives in the app data dir alongside settings.json.
+const FRESH_INSTALL_MARKER: &str = ".fresh-install";
 // Window is intentionally larger than the wheel itself (wheel diameter 300 in
 // App.tsx): the extra margin gives the CSS drop-shadow room to fade out inside
 // the window. Without it the shadow clips at the window edge and reads as a
@@ -188,6 +195,37 @@ fn show_toast(app: &tauri::AppHandle, message: String) {
 /// Failures here are reported rather than swallowed: a window that silently
 /// refuses to appear is indistinguishable from a dead click, and tracking one
 /// down through a `let _ =` cost a full debug cycle once already.
+/// Shows a window and forces it to the front of the Z-order.
+///
+/// `WebviewWindowBuilder::visible(true)` isn't enough for the one launch that
+/// matters most: the installer's "Run Synapse" finish-page checkbox starts the
+/// app while the installer still owns the foreground, and Windows' foreground
+/// lock then refuses the new process activation — the wizard opens *behind* the
+/// installer (and behind whatever else is open) and reads as "nothing happened".
+///
+/// Bouncing through always-on-top is what fixes that: it moves the window with
+/// SetWindowPos, which is pure Z-order and isn't gated by the foreground lock,
+/// and dropping topmost again leaves the window at the top of the normal band
+/// rather than permanently floating over the user's other apps. So the window is
+/// on top whether or not `set_focus`'s SetForegroundWindow is honoured.
+fn show_foreground(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_focus();
+    let _ = window.set_always_on_top(false);
+}
+
+/// True exactly once after the installer has run.
+///
+/// Split from the `AppHandle` lookup so it's testable without a Tauri runtime,
+/// same as `settings::load`. `remove_file` both answers "was it there?" and
+/// clears it, so onboarding shows on the first launch after an install and not
+/// on every launch after that.
+fn take_fresh_install_marker(dir: &std::path::Path) -> bool {
+    std::fs::remove_file(dir.join(FRESH_INSTALL_MARKER)).is_ok()
+}
+
 fn show_utility_window(app: &tauri::AppHandle, label: &str) {
     let Some(window) = app.get_webview_window(label) else {
         eprintln!(
@@ -279,7 +317,7 @@ fn spawn_recording(app: tauri::AppHandle) {
                     eprintln!("[synapse] paste failed: {e}");
                 }
             }
-            Ok(_) => fail("didn't catch anything — try speaking a bit louder".into()),
+            Ok(_) => fail("didn't catch anything - try speaking a bit louder".into()),
             Err(e) => fail(e),
         }
     });
@@ -480,6 +518,16 @@ fn start_dictation(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be registered before any other plugin. Without it a second launch
+        // (clicking the desktop icon while Synapse is already in the tray) starts
+        // a duplicate process whose global-shortcut registration fails, taking
+        // that process down — and, because every window starts hidden, the whole
+        // thing is invisible either way. Here the second launch instead summons
+        // the wheel on the process that already owns the shortcuts.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_overlay_at_cursor(app);
+            let _ = app.emit("wheel-shown", ());
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -509,7 +557,12 @@ pub fn run() {
             download_model
         ])
         .setup(|app| {
-            asr::preload_model(model_download::model_dir(app.handle())?);
+            let model_dir = model_download::model_dir(app.handle())?;
+            // Clears fp32 leftovers an earlier build downloaded before the
+            // model preloads, so a machine that upgraded doesn't keep loading
+            // the broken stub instead of the int8 files.
+            model_download::remove_stale_files(&model_dir);
+            asr::preload_model(model_dir);
 
             let overlay = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse")
@@ -544,7 +597,7 @@ pub fn run() {
             // Tauri escapes the '#' so window.location.hash came back empty and
             // every window rendered the wheel.
             let notepad = WebviewWindowBuilder::new(app, NOTEPAD_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse — Notepad")
+                .title("Synapse - Notepad")
                 .inner_size(480.0, 600.0)
                 .visible(false)
                 .build()?;
@@ -563,7 +616,7 @@ pub fn run() {
             });
 
             let snippet_picker = WebviewWindowBuilder::new(app, SNIPPET_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse — Snippets")
+                .title("Synapse - Snippets")
                 .inner_size(420.0, 520.0)
                 .visible(false)
                 .build()?;
@@ -579,7 +632,7 @@ pub fn run() {
             });
 
             let ai_panel = WebviewWindowBuilder::new(app, AI_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse — AI")
+                .title("Synapse - AI")
                 .inner_size(420.0, 560.0)
                 .visible(false)
                 .build()?;
@@ -596,7 +649,7 @@ pub fn run() {
 
             let settings_window =
                 WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
-                    .title("Synapse — Settings")
+                    .title("Synapse - Settings")
                     .inner_size(720.0, 520.0)
                     .visible(false)
                     .build()?;
@@ -616,19 +669,36 @@ pub fn run() {
             // onboarding_complete and lets the window actually be destroyed, same as
             // Tauri's default close behavior. It's shown automatically on first launch
             // and never again after that — there is no "redo onboarding" entry point.
+            //
+            // The flag alone isn't enough to decide: %APPDATA% survives an
+            // uninstall/reinstall, so a machine that ran an earlier build carries
+            // `onboarding_complete: true` into a brand-new install and would start
+            // with every window hidden — which is what made the installer's "Run
+            // Synapse" checkbox look like it did nothing. The NSIS post-install
+            // hook drops a marker for exactly that case (see installer/hooks.nsh).
+            // Consume it unconditionally rather than short-circuiting behind the
+            // flag, or a marker left unread during a not-yet-onboarded launch
+            // would re-trigger the wizard later.
             let initial_settings = settings::load(&settings_path(app.handle())?);
-            let show_onboarding = !initial_settings.onboarding_complete;
+            let fresh_install = take_fresh_install_marker(&app.path().app_data_dir()?);
+            let show_onboarding = fresh_install || !initial_settings.onboarding_complete;
 
             let onboarding =
                 WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
-                    .title("Synapse — Setup")
+                    .title("Setup")
                     .inner_size(480.0, 600.0)
                     .resizable(false)
                     .center()
-                    .visible(show_onboarding)
+                    .visible(false)
                     .build()?;
             #[cfg(debug_assertions)]
             onboarding.open_devtools();
+
+            // Shown here rather than via `.visible(show_onboarding)` so it goes
+            // through the Z-order dance — see `show_foreground`.
+            if show_onboarding {
+                show_foreground(&onboarding);
+            }
 
             // Closing early (the X button, at any step) is treated the same as
             // finishing the wizard: mark onboarding_complete so it doesn't reappear.
@@ -674,8 +744,89 @@ pub fn run() {
                 },
             )?;
 
+            // Synapse has no main window: every window above starts hidden and is
+            // summoned by hotkey, so on an already-onboarded machine launching the
+            // app produced no visible feedback at all and read as a dead icon. The
+            // tray is the only persistent, clickable proof it's running, and the
+            // only way to reach the app or quit it without knowing the hotkeys.
+            let open_item = MenuItem::with_id(app, "open", "Open wheel\tCtrl+Alt+Enter", true, None::<&str>)?;
+            let dictate_item =
+                MenuItem::with_id(app, "dictate", "Start dictation\tCtrl+Alt+D", true, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Synapse", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(
+                app,
+                &[&open_item, &dictate_item, &settings_item, &quit_item],
+            )?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().cloned().ok_or("no bundled app icon for the tray")?)
+                .tooltip("Synapse")
+                .menu(&tray_menu)
+                // Left click summons the wheel (below); without this the menu
+                // would pop on left click too and swallow that gesture.
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => {
+                        show_overlay_at_cursor(app);
+                        let _ = app.emit("wheel-shown", ());
+                    }
+                    "dictate" => begin_direct_dictation(app),
+                    "settings" => show_utility_window(app, SETTINGS_LABEL),
+                    "quit" => app.exit(0),
+                    other => eprintln!("[synapse] unhandled tray menu id: {other}"),
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        show_overlay_at_cursor(app);
+                        let _ = app.emit("wheel-shown", ());
+                    }
+                })
+                .build(app)?;
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("synapse-lib-test-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    /// The reinstall case: app data (and so `onboarding_complete`) is still
+    /// there, but the installer just ran, so onboarding has to show once.
+    #[test]
+    fn fresh_install_marker_is_reported_once_then_consumed() {
+        let dir = temp_dir("fresh-install");
+        std::fs::write(dir.join(FRESH_INSTALL_MARKER), "").expect("write marker");
+
+        assert!(
+            take_fresh_install_marker(&dir),
+            "marker left by the installer triggers onboarding"
+        );
+        assert!(
+            !take_fresh_install_marker(&dir),
+            "and not again on every launch after that"
+        );
+    }
+
+    #[test]
+    fn no_marker_reports_false() {
+        let dir = temp_dir("no-marker");
+        assert!(!take_fresh_install_marker(&dir));
+    }
 }

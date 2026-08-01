@@ -135,7 +135,7 @@ pub fn record_and_transcribe() -> Result<String, String> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .ok_or("no microphone found — check that an input device is connected and enabled")?;
+        .ok_or("no microphone found - check that an input device is connected and enabled")?;
 
     let supported = device
         .default_input_config()
@@ -176,7 +176,7 @@ pub fn record_and_transcribe() -> Result<String, String> {
         }
         if elapsed >= NO_SPEECH_TIMEOUT_MS && !state.lock().unwrap().heard_speech {
             drop(stream);
-            return Err("no speech detected — is the right microphone selected?".into());
+            return Err("no speech detected - is the right microphone selected?".into());
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -192,7 +192,7 @@ pub fn record_and_transcribe() -> Result<String, String> {
 
     let model_lock = MODEL
         .get()
-        .ok_or("speech model still loading — try again in a moment")?;
+        .ok_or("speech model still loading - try again in a moment")?;
     let mut model = model_lock.lock().map_err(|_| "model lock poisoned")?;
     let result = model
         .transcribe_samples(samples, TARGET_SAMPLE_RATE, 1, Some(TimestampMode::Sentences))
@@ -209,7 +209,7 @@ pub fn check_mic_access() -> Result<(), String> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .ok_or("no microphone found — check that an input device is connected and enabled")?;
+        .ok_or("no microphone found - check that an input device is connected and enabled")?;
 
     let supported = device
         .default_input_config()

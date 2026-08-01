@@ -1,12 +1,43 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
+/// The int8 variants are deliberate: the repo's fp32 `encoder-model.onnx` is a
+/// 42MB graph stub whose weights live in a separate 2.4GB
+/// `encoder-model.onnx.data`, so downloading it alone produces a model that
+/// fails to load with "External data path does not exist". The int8 encoder is
+/// self-contained (~650MB, the size the docs always quoted) and parakeet-rs
+/// resolves both of these names on its own.
 pub const MODEL_FILES: [&str; 4] = [
     "config.json",
-    "decoder_joint-model.onnx",
-    "encoder-model.onnx",
+    "decoder_joint-model.int8.onnx",
+    "encoder-model.int8.onnx",
     "vocab.txt",
 ];
+
+/// Leftovers from the earlier fp32 file list. These have to be deleted rather
+/// than ignored: parakeet-rs prefers `encoder-model.onnx` over the int8 name,
+/// so a stale stub on disk shadows a perfectly good download and dictation
+/// stays broken.
+pub const STALE_MODEL_FILES: [&str; 3] = [
+    "encoder-model.onnx",
+    "encoder-model.onnx.data",
+    "decoder_joint-model.onnx",
+];
+
+/// Best-effort — a file that can't be removed (locked, permissions) is not
+/// worth failing a download over; the load error it may cause is already
+/// reported separately.
+pub fn remove_stale_files(dir: &Path) {
+    for file in STALE_MODEL_FILES {
+        let path = dir.join(file);
+        if path.is_file() {
+            match std::fs::remove_file(&path) {
+                Ok(()) => println!("[synapse] removed stale model file {file}"),
+                Err(e) => eprintln!("[synapse] could not remove stale model file {file}: {e}"),
+            }
+        }
+    }
+}
 
 pub const MODEL_REPO_BASE: &str =
     "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main";
@@ -15,6 +46,37 @@ pub const MODEL_REPO_BASE: &str =
 /// file left over from an interrupted download does not count.
 pub fn is_downloaded(dir: &Path) -> bool {
     MODEL_FILES.iter().all(|f| dir.join(f).is_file())
+}
+
+/// Size of `base_url/<file>` on the server, without downloading it.
+///
+/// Reads the length off the response *headers* rather than calling
+/// `Response::content_length()`: on a HEAD request that method reports the
+/// body length, which is always 0 for a bodiless HEAD reply. The old code
+/// summed those zeros into an overall total of 0, so the download UI showed
+/// "12 MB / 0 MB". Hugging Face additionally reports `X-Linked-Size` for
+/// LFS/Xet-backed files, which is the authoritative size and survives the
+/// redirect chain, so it wins when present.
+pub fn remote_file_size(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    file: &str,
+) -> Result<u64, String> {
+    let url = format!("{base_url}/{file}");
+    let response = client
+        .head(&url)
+        .send()
+        .map_err(|e| format!("{file}: HEAD failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("{file}: server returned {}", response.status()));
+    }
+    let headers = response.headers();
+    ["x-linked-size", "content-length"]
+        .iter()
+        .filter_map(|name| headers.get(*name))
+        .filter_map(|v| v.to_str().ok()?.parse::<u64>().ok())
+        .find(|size| *size > 0)
+        .ok_or_else(|| format!("{file}: server did not report a size"))
 }
 
 /// Downloads one file into `dir/<file>`, resuming from `dir/<file>.part` if
@@ -90,7 +152,7 @@ pub fn download_one_file(
 
     if downloaded != total {
         return Err(format!(
-            "{file}: got {downloaded} bytes, expected {total} — connection likely dropped"
+            "{file}: got {downloaded} bytes, expected {total} - connection likely dropped"
         ));
     }
 
@@ -138,6 +200,7 @@ pub fn spawn_download(app: tauri::AppHandle, on_success: impl FnOnce() + Send + 
     std::thread::spawn(move || {
         let result = (|| -> Result<(), String> {
             let dir = model_dir(&app)?;
+            remove_stale_files(&dir);
             let client = reqwest::blocking::Client::new();
 
             // One HEAD request per not-yet-downloaded file, purely so the UI
@@ -151,15 +214,7 @@ pub fn spawn_download(app: tauri::AppHandle, on_success: impl FnOnce() + Send + 
                     file_totals.push(meta.len());
                     continue;
                 }
-                let url = format!("{MODEL_REPO_BASE}/{file}");
-                let resp = client
-                    .head(&url)
-                    .send()
-                    .map_err(|e| format!("{file}: HEAD failed: {e}"))?;
-                let total = resp
-                    .content_length()
-                    .ok_or_else(|| format!("{file}: server did not report a size"))?;
-                file_totals.push(total);
+                file_totals.push(remote_file_size(&client, MODEL_REPO_BASE, file)?);
             }
             let overall_total: u64 = file_totals.iter().sum();
 
@@ -295,6 +350,76 @@ mod tests {
             !dir.join("encoder-model.onnx").exists(),
             "incomplete download is never promoted to the final filename"
         );
+    }
+
+    #[test]
+    fn stale_fp32_files_are_removed_and_current_ones_are_kept() {
+        let dir = temp_dir("stale");
+        std::fs::write(dir.join("encoder-model.onnx"), b"fp32 stub").unwrap();
+        std::fs::write(dir.join("decoder_joint-model.onnx"), b"fp32").unwrap();
+        std::fs::write(dir.join("encoder-model.int8.onnx"), b"int8").unwrap();
+        std::fs::write(dir.join("vocab.txt"), b"words").unwrap();
+
+        remove_stale_files(&dir);
+
+        assert!(!dir.join("encoder-model.onnx").exists());
+        assert!(!dir.join("decoder_joint-model.onnx").exists());
+        assert!(dir.join("encoder-model.int8.onnx").exists(), "int8 files survive");
+        assert!(dir.join("vocab.txt").exists(), "shared files survive");
+    }
+
+    #[test]
+    fn remote_size_comes_from_headers_not_the_empty_head_body() {
+        let mut server = mockito::Server::new();
+        let _m = server
+            .mock("HEAD", "/encoder-model.onnx")
+            .with_status(200)
+            .with_header("content-length", "41770866")
+            .create();
+
+        let client = reqwest::blocking::Client::new();
+        let size = remote_file_size(&client, &server.url(), "encoder-model.onnx")
+            .expect("size probe succeeds");
+
+        // reqwest's `Response::content_length()` would report 0 here (a HEAD
+        // reply carries no body), which is what made the UI show "/ 0 MB".
+        assert_eq!(size, 41_770_866);
+    }
+
+    #[test]
+    fn remote_size_prefers_x_linked_size_for_lfs_backed_files() {
+        let mut server = mockito::Server::new();
+        // How Hugging Face answers for an LFS/Xet file: the pointer's own
+        // length in Content-Length, the real file size in X-Linked-Size.
+        let _m = server
+            .mock("HEAD", "/decoder_joint-model.onnx")
+            .with_status(200)
+            .with_header("content-length", "990")
+            .with_header("x-linked-size", "12345678")
+            .create();
+
+        let client = reqwest::blocking::Client::new();
+        let size = remote_file_size(&client, &server.url(), "decoder_joint-model.onnx")
+            .expect("size probe succeeds");
+
+        assert_eq!(size, 12_345_678);
+    }
+
+    #[test]
+    fn remote_size_errors_when_no_usable_size_header_is_present() {
+        let mut server = mockito::Server::new();
+        let _m = server
+            .mock("HEAD", "/vocab.txt")
+            .with_status(200)
+            .with_header("content-length", "0")
+            .create();
+
+        let client = reqwest::blocking::Client::new();
+        let result = remote_file_size(&client, &server.url(), "vocab.txt");
+
+        // Better to fail loudly than to sum a bogus 0 into the overall total
+        // and render a progress bar against a denominator of zero.
+        assert!(result.is_err(), "a zero size is treated as no size at all");
     }
 
     #[test]

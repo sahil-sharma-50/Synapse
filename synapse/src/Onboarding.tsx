@@ -1,57 +1,36 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings } from "./models";
+import { formatBytes, useModelDownload } from "./modelDownload";
+import logo from "./assets/synapse.png";
 import "./Onboarding.css";
 
-type Step = "welcome" | "mic" | "model" | "done";
+const STEPS = ["welcome", "mic", "model", "done"] as const;
+type Step = (typeof STEPS)[number];
 type MicState = "idle" | "checking" | "granted" | "denied";
 
-interface DownloadProgress {
-  file: string;
-  file_bytes_downloaded: number;
-  file_bytes_total: number;
-  overall_bytes_downloaded: number;
-  overall_bytes_total: number;
-}
+const STEP_LABELS: Record<Step, string> = {
+  welcome: "Welcome",
+  mic: "Microphone",
+  model: "Model",
+  done: "Finish",
+};
 
-function formatMb(bytes: number): string {
-  return (bytes / (1024 * 1024)).toFixed(0);
-}
+const FEATURES = [
+  { icon: "🎙", title: "Dictate anywhere", body: "Speak and the text lands in whatever you're typing in." },
+  { icon: "✨", title: "Ask AI in place", body: "Send a prompt or a screenshot and insert the answer." },
+  { icon: "📝", title: "Notes & snippets", body: "A scratchpad and reusable text, one hotkey away." },
+];
 
 export default function Onboarding() {
   const [step, setStep] = useState<Step>("welcome");
   const [micState, setMicState] = useState<MicState>("idle");
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState<DownloadProgress | null>(null);
-  const [downloadError, setDownloadError] = useState("");
-  const [modelReady, setModelReady] = useState(false);
   const [finishError, setFinishError] = useState("");
+  const model = useModelDownload();
 
-  useEffect(() => {
-    invoke<boolean>("model_status").then(setModelReady);
-  }, []);
-
-  useEffect(() => {
-    const unlistenProgress = listen<DownloadProgress>("model-download-progress", (e) => {
-      setProgress(e.payload);
-    });
-    const unlistenDone = listen("model-download-done", () => {
-      setDownloading(false);
-      setModelReady(true);
-    });
-    const unlistenError = listen<string>("model-download-error", (e) => {
-      setDownloading(false);
-      setDownloadError(e.payload);
-    });
-    return () => {
-      unlistenProgress.then((f) => f());
-      unlistenDone.then((f) => f());
-      unlistenError.then((f) => f());
-    };
-  }, []);
+  const stepIndex = STEPS.indexOf(step);
 
   async function requestMic() {
     setMicState("checking");
@@ -63,25 +42,15 @@ export default function Onboarding() {
     }
   }
 
-  function openMicSettings() {
-    openUrl("ms-settings:privacy-microphone");
-  }
-
-  function startDownload() {
-    setDownloadError("");
-    setDownloading(true);
-    invoke("download_model").catch((e) => {
-      setDownloading(false);
-      setDownloadError(String(e));
-    });
-  }
-
   async function finish() {
     setFinishError("");
     try {
       const settings = await invoke<Settings>("get_settings");
       await invoke("update_settings", { settings: { ...settings, onboarding_complete: true } });
-      getCurrentWindow().close();
+      // Awaited so a failure to close surfaces in the UI instead of becoming a
+      // silent unhandled rejection — a dead "Finish" button with no feedback
+      // is exactly what this screen used to do.
+      await getCurrentWindow().close();
     } catch (e) {
       console.error("[synapse] failed to finish onboarding:", e);
       setFinishError(String(e));
@@ -90,121 +59,207 @@ export default function Onboarding() {
 
   return (
     <div className="ob-root">
-      {step === "welcome" && (
-        <div className="ob-step">
-          <h1 className="ob-title">Welcome to Synapse</h1>
-          <p className="ob-text">
-            Dictation, AI chat, screenshots, snippets, and a notepad — all one hotkey away
-            (Ctrl+Alt+Enter). Let's get you set up.
-          </p>
-          <button className="ob-btn" onClick={() => setStep("mic")}>
-            Get Started
-          </button>
-        </div>
-      )}
+      <header className="ob-head">
+        <span className="ob-brand">Synapse</span>
+        <ol className="ob-steps">
+          {STEPS.map((s, i) => (
+            <li
+              key={s}
+              className={`ob-dot ${i < stepIndex ? "ob-dot-done" : ""} ${i === stepIndex ? "ob-dot-now" : ""}`}
+              title={STEP_LABELS[s]}
+            />
+          ))}
+        </ol>
+      </header>
 
-      {step === "mic" && (
-        <div className="ob-step">
-          <h1 className="ob-title">Microphone access</h1>
-          <p className="ob-text">
-            Speech-to-Text needs microphone access to transcribe what you say.
-          </p>
-          {micState === "granted" && (
-            <div className="ob-status ob-ok">Microphone access confirmed.</div>
-          )}
-          {micState === "denied" && (
-            <div className="ob-status ob-warn">
-              <span>Windows is blocking microphone access for Synapse.</span>
-              <button className="ob-btn ob-btn-quiet" onClick={openMicSettings}>
-                Open Privacy Settings
-              </button>
+      <main className="ob-body" key={step}>
+        {step === "welcome" && (
+          <div className="ob-step">
+            <div className="ob-hero">
+              <img className="ob-hero-mark" src={logo} alt="" />
             </div>
-          )}
-          {micState !== "granted" && (
-            <button className="ob-btn" onClick={requestMic} disabled={micState === "checking"}>
-              {micState === "checking" ? "Checking…" : "Grant Access"}
-            </button>
-          )}
-          <div className="ob-nav">
-            <button className="ob-link" onClick={() => setStep("welcome")}>
-              Back
-            </button>
-            <button className="ob-btn" onClick={() => setStep("model")}>
-              Continue
-            </button>
+            <h1 className="ob-title">Welcome to Synapse</h1>
+            <p className="ob-text">
+              Everything sits behind one shortcut: press <kbd className="ob-kbd">Ctrl</kbd>
+              <kbd className="ob-kbd">Alt</kbd>
+              <kbd className="ob-kbd">Enter</kbd> to open the wheel.
+            </p>
+            <ul className="ob-features">
+              {FEATURES.map((f) => (
+                <li className="ob-feature" key={f.title}>
+                  <span className="ob-feature-icon" aria-hidden="true">
+                    {f.icon}
+                  </span>
+                  <div>
+                    <p className="ob-feature-title">{f.title}</p>
+                    <p className="ob-feature-body">{f.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      )}
+        )}
 
-      {step === "model" && (
-        <div className="ob-step">
-          <h1 className="ob-title">Speech-to-Text model</h1>
-          <p className="ob-text">
-            Dictation runs fully offline using a local ~690MB model. Download it now, or skip and
-            grab it later from Settings → Voice.
-          </p>
-          {modelReady && <div className="ob-status ob-ok">Model already downloaded.</div>}
-          {!modelReady && downloading && progress && (
-            <div className="ob-progress">
-              <div className="ob-progress-bar">
-                <div
-                  className="ob-progress-fill"
-                  style={{
-                    width: `${(100 * progress.overall_bytes_downloaded) / Math.max(progress.overall_bytes_total, 1)}%`,
-                  }}
-                />
+        {step === "mic" && (
+          <div className="ob-step">
+            <h1 className="ob-title">Microphone access</h1>
+            <p className="ob-text">
+              Dictation transcribes on this machine, audio never leaves your computer. Windows
+              still needs your permission before Synapse can listen.
+            </p>
+
+            <div className={`ob-card ${micState === "granted" ? "ob-card-ok" : ""}`}>
+              <div className="ob-card-row">
+                <span className={`ob-pill ${micState === "granted" ? "ob-pill-ok" : micState === "denied" ? "ob-pill-warn" : ""}`}>
+                  {micState === "granted"
+                    ? "Allowed"
+                    : micState === "denied"
+                      ? "Blocked"
+                      : "Not checked yet"}
+                </span>
+                {micState !== "granted" && (
+                  <button
+                    className="ob-btn ob-btn-sm"
+                    onClick={requestMic}
+                    disabled={micState === "checking"}
+                  >
+                    {micState === "checking" ? "Checking…" : "Allow microphone"}
+                  </button>
+                )}
               </div>
-              <p className="ob-small">
-                {formatMb(progress.overall_bytes_downloaded)} MB / {formatMb(progress.overall_bytes_total)} MB
+              <p className="ob-card-note">
+                {micState === "granted"
+                  ? "Synapse can record audio for transcription."
+                  : micState === "denied"
+                    ? "Windows is blocking microphone access. Turn Synapse on under Privacy & security → Microphone, then check again."
+                    : "Clicking this opens Windows' own microphone prompt. You can also skip and do it later."}
               </p>
+              {micState === "denied" && (
+                <button className="ob-btn ob-btn-quiet ob-btn-sm" onClick={() => openUrl("ms-settings:privacy-microphone")}>
+                  Open Windows privacy settings
+                </button>
+              )}
             </div>
-          )}
-          {downloadError && (
-            <div className="ob-status ob-warn">
-              <span>{downloadError}</span>
-              <button className="ob-btn ob-btn-quiet" onClick={startDownload}>
-                Retry
-              </button>
-            </div>
-          )}
-          {!modelReady && !downloading && !downloadError && (
-            <div className="ob-nav">
-              <button className="ob-link" onClick={() => setStep("done")}>
-                Skip for now
-              </button>
-              <button className="ob-btn" onClick={startDownload}>
-                Download Now
-              </button>
-            </div>
-          )}
-          {modelReady && (
-            <div className="ob-nav">
-              <span />
-              <button className="ob-btn" onClick={() => setStep("done")}>
-                Continue
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {step === "done" && (
-        <div className="ob-step">
-          <h1 className="ob-title">You're all set</h1>
-          <p className="ob-text">
-            Press Ctrl+Alt+Enter anytime to open the wheel, or Ctrl+Alt+D to start dictating
-            directly.
-          </p>
-          {finishError && (
-            <div className="ob-status ob-warn">
-              <span>{finishError}</span>
+        {step === "model" && (
+          <div className="ob-step">
+            <h1 className="ob-title">Speech-to-Text model</h1>
+            <p className="ob-text">
+              Dictation runs fully offline using a local model. It's a one-time{" "}
+              {model.known ? formatBytes(model.total) : "~630 MB"} download; interrupted downloads
+              resume where they left off.
+            </p>
+
+            <div className={`ob-card ${model.ready ? "ob-card-ok" : ""}`}>
+              {model.ready ? (
+                <>
+                  <div className="ob-card-row">
+                    <span className="ob-pill ob-pill-ok">Installed</span>
+                  </div>
+                  <p className="ob-card-note">The model is on disk, dictation is ready to use.</p>
+                </>
+              ) : model.downloading ? (
+                <>
+                  <div className="ob-meter-head">
+                    <span className="ob-meter-pct">
+                      {model.known ? `${Math.floor(model.percent)}%` : "Starting…"}
+                    </span>
+                    <span className="ob-meter-eta">{model.remaining}</span>
+                  </div>
+                  <div className={`ob-meter ${model.known ? "" : "ob-meter-idle"}`}>
+                    <div
+                      className="ob-meter-fill"
+                      style={model.known ? { width: `${model.percent}%` } : undefined}
+                    />
+                  </div>
+                  <div className="ob-meter-foot">
+                    <span>
+                      {formatBytes(model.downloaded)}
+                      {model.known ? ` of ${formatBytes(model.total)}` : ""}
+                    </span>
+                    <span>{model.rate > 0 ? `${formatBytes(model.rate)}/s` : ""}</span>
+                  </div>
+                  {model.progress && (
+                    <p className="ob-card-note ob-truncate">Fetching {model.progress.file}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="ob-card-row">
+                    <span className="ob-pill">Not downloaded</span>
+                    <button className="ob-btn ob-btn-sm" onClick={model.start}>
+                      {model.error ? "Try again" : "Download now"}
+                    </button>
+                  </div>
+                  <p className="ob-card-note">
+                    {model.error || "You can skip this and grab it later from Settings → Voice."}
+                  </p>
+                </>
+              )}
             </div>
-          )}
-          <button className="ob-btn" onClick={finish}>
-            Open Synapse
+          </div>
+        )}
+
+        {step === "done" && (
+          <div className="ob-step">
+            <div className="ob-hero">
+              <img className="ob-hero-mark" src={logo} alt="" />
+            </div>
+            <h1 className="ob-title">You're all set</h1>
+            <p className="ob-text">
+              Synapse keeps running in the background. Nothing stays on screen until you call it.
+            </p>
+            <ul className="ob-keys">
+              <li>
+                <span>
+                  <kbd className="ob-kbd">Ctrl</kbd>
+                  <kbd className="ob-kbd">Alt</kbd>
+                  <kbd className="ob-kbd">Enter</kbd>
+                </span>
+                Open the wheel
+              </li>
+              <li>
+                <span>
+                  <kbd className="ob-kbd">Ctrl</kbd>
+                  <kbd className="ob-kbd">Alt</kbd>
+                  <kbd className="ob-kbd">D</kbd>
+                </span>
+                Start dictating right away
+              </li>
+            </ul>
+            {finishError && <div className="ob-error">{finishError}</div>}
+          </div>
+        )}
+      </main>
+
+      <footer className="ob-foot">
+        {stepIndex > 0 ? (
+          <button className="ob-link" onClick={() => setStep(STEPS[stepIndex - 1])}>
+            Back
           </button>
-        </div>
-      )}
+        ) : (
+          <span />
+        )}
+
+        {step === "done" ? (
+          <button className="ob-btn" onClick={finish}>
+            Finish
+          </button>
+        ) : (
+          <button className="ob-btn" onClick={() => setStep(STEPS[stepIndex + 1])}>
+            {/* Moving on mid-download is allowed on purpose: the transfer runs on
+                a background thread in Rust and survives this window closing, so
+                blocking the wizard on it would only trap the user. */}
+            {step === "welcome"
+              ? "Get started"
+              : step === "model" && !model.ready && !model.downloading
+                ? "Skip for now"
+                : "Continue"}
+          </button>
+        )}
+      </footer>
     </div>
   );
 }

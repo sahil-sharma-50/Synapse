@@ -5,6 +5,7 @@
   "windows": ["overlay", "notepad", "snippet-picker", "ai-panel", "settings", "onboarding"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
     "opener:default",
     {
       "identifier": "opener:allow-open-url",

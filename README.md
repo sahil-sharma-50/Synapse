@@ -6,6 +6,10 @@
 
 Synapse is a cross-platform (macOS + Windows) desktop utility that puts voice dictation, quick AI assistance, and quick-capture tools one hotkey away. Pressing `Ctrl+Alt+Enter` summons a circular radial menu at the current mouse position, letting you pick an action with a single click, no app switching, no typing a command.
 
+## Download
+
+**[Download the latest Windows installer](https://github.com/sahil-sharma-50/Synapse/releases/latest)** — grab `Synapse_x64-setup.exe` from the Releases page and run it. No need to clone the repo or build from source. The installer's first-run onboarding wizard downloads the speech-to-text model automatically.
+
 ## Features
 
 - **Speech-to-Text** - instant local voice dictation into any focused field
@@ -33,7 +37,7 @@ npm run tauri dev
 
 This starts the Vite dev server and launches the Tauri app window. On first run, grant any OS permissions prompted (microphone access, accessibility, etc.) for dictation and text injection to work.
 
-To build a production bundle:
+To build a production bundle (produces `synapse/src-tauri/target/release/bundle/nsis/Synapse_0.1.0_x64-setup.exe` on Windows):
 
 ```bash
 npm run tauri build
@@ -41,12 +45,9 @@ npm run tauri build
 
 ## Speech-to-Text model
 
-Local dictation uses the [Parakeet TDT 0.6B v2](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx) ONNX model. It isn't checked into this repo (~690 MB) and must be downloaded separately before `npm run tauri dev` will load it:
+Local dictation uses the [Parakeet TDT 0.6B v2](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx) ONNX model (int8 variant, ~630 MB). It isn't checked into this repo. On first run, the onboarding wizard downloads it into `synapse/src-tauri/model/` automatically (resumable, with a progress meter) — no manual steps needed, whether you're running `npm run tauri dev` or the installed app.
 
-1. Download `config.json`, `decoder_joint-model.onnx`, `encoder-model.onnx`, and `vocab.txt` from the [model repo](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/main).
-2. Place all four files in `synapse/src-tauri/model/` (create the folder if it doesn't exist).
-
-`synapse/src-tauri/model/` is gitignored, so this step needs to be repeated on every machine you run the app on.
+`synapse/src-tauri/model/` is gitignored, so this happens once per machine.
 
 ## Project structure
 

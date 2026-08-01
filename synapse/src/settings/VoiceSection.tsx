@@ -1,58 +1,7 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-
-interface DownloadProgress {
-  file: string;
-  file_bytes_downloaded: number;
-  file_bytes_total: number;
-  overall_bytes_downloaded: number;
-  overall_bytes_total: number;
-}
-
-function formatMb(bytes: number): string {
-  return (bytes / (1024 * 1024)).toFixed(0);
-}
+import { formatBytes, useModelDownload } from "../modelDownload";
 
 export default function VoiceSection() {
-  const [ready, setReady] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState<DownloadProgress | null>(null);
-  const [error, setError] = useState("");
-
-  function refresh() {
-    invoke<boolean>("model_status").then(setReady);
-  }
-
-  useEffect(refresh, []);
-
-  useEffect(() => {
-    const unlistenProgress = listen<DownloadProgress>("model-download-progress", (e) =>
-      setProgress(e.payload),
-    );
-    const unlistenDone = listen("model-download-done", () => {
-      setDownloading(false);
-      setReady(true);
-    });
-    const unlistenError = listen<string>("model-download-error", (e) => {
-      setDownloading(false);
-      setError(e.payload);
-    });
-    return () => {
-      unlistenProgress.then((f) => f());
-      unlistenDone.then((f) => f());
-      unlistenError.then((f) => f());
-    };
-  }, []);
-
-  function download() {
-    setError("");
-    setDownloading(true);
-    invoke("download_model").catch((e) => {
-      setDownloading(false);
-      setError(String(e));
-    });
-  }
+  const model = useModelDownload();
 
   return (
     <div className="set-section">
@@ -61,27 +10,39 @@ export default function VoiceSection() {
       <div className="set-row">
         <span className="set-label">Model</span>
         <div className="set-key">
-          <span className={`set-badge ${ready ? "set-ok" : "set-missing"}`}>
-            {ready ? "Downloaded" : "Not downloaded"}
+          <span className={`set-badge ${model.ready ? "set-ok" : "set-missing"}`}>
+            {model.ready ? "Downloaded" : "Not downloaded"}
           </span>
-          {!downloading && (
-            <button className="set-btn" onClick={download}>
-              {ready ? "Re-download" : "Download (690MB)"}
+          {!model.downloading && (
+            <button className="set-btn" onClick={model.start}>
+              {model.ready ? "Re-download" : "Download (~630 MB)"}
             </button>
           )}
         </div>
       </div>
 
-      {downloading && progress && (
-        <p className="set-hint">
-          Downloading {progress.file}: {formatMb(progress.overall_bytes_downloaded)} MB /{" "}
-          {formatMb(progress.overall_bytes_total)} MB
-        </p>
+      {model.downloading && (
+        <div className="set-progress">
+          <div className={`set-meter ${model.known ? "" : "set-meter-idle"}`}>
+            <div
+              className="set-meter-fill"
+              style={model.known ? { width: `${model.percent}%` } : undefined}
+            />
+          </div>
+          <div className="set-progress-foot">
+            <span>
+              {model.known ? `${Math.floor(model.percent)}% · ` : ""}
+              {formatBytes(model.downloaded)}
+              {model.known ? ` of ${formatBytes(model.total)}` : ""}
+            </span>
+            <span>{model.remaining}</span>
+          </div>
+        </div>
       )}
-      {error && <div className="set-error">{error}</div>}
+      {model.error && <div className="set-error">{model.error}</div>}
 
       <p className="set-hint">
-        Speech-to-Text runs fully offline using this local model — required for dictation.
+        Speech-to-Text runs fully offline using this local model, required for dictation.
       </p>
     </div>
   );
