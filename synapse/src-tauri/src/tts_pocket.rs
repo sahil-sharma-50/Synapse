@@ -196,7 +196,7 @@ impl TtsSidecar {
             }
         };
 
-        if !is_current(response.id, generation) {
+        if !is_current(response.id, self.generation.load(Ordering::SeqCst)) {
             let _ = std::fs::remove_file(&out_path);
             return Ok(());
         }
