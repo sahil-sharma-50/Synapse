@@ -38,8 +38,21 @@ def main() -> None:
         line = line.strip()
         if not line:
             continue
-        request = json.loads(line)
-        response = handle(request)
+        try:
+            request = json.loads(line)
+            response = handle(request)
+        except Exception as exc:  # noqa: BLE001 - any failure must produce a response line
+            # Safely extract the request ID from the line for the error response.
+            # This must not crash even if:
+            # - The line is malformed JSON
+            # - The JSON parses but isn't a dict (e.g. list, string, number)
+            request_id = 0
+            try:
+                parsed = json.loads(line)
+                request_id = parsed.get("id", 0) if isinstance(parsed, dict) else 0
+            except Exception:
+                pass
+            response = {"id": request_id, "status": "error", "message": str(exc)}
         print(json.dumps(response), flush=True)
 
 
