@@ -14,6 +14,7 @@ const OVERLAY_LABEL: &str = "overlay";
 const NOTEPAD_LABEL: &str = "notepad";
 const SNIPPET_LABEL: &str = "snippet-picker";
 const AI_LABEL: &str = "ai-panel";
+const SETTINGS_LABEL: &str = "settings";
 // Window is intentionally larger than the wheel itself (wheel diameter 300 in
 // App.tsx): the extra margin gives the CSS drop-shadow room to fade out inside
 // the window. Without it the shadow clips at the window edge and reads as a
@@ -158,6 +159,10 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
             hide_overlay(&app);
             show_utility_window(&app, AI_LABEL);
         }
+        "settings" => {
+            hide_overlay(&app);
+            show_utility_window(&app, SETTINGS_LABEL);
+        }
         other => {
             println!("[synapse] no handler yet for wedge: {other}");
             hide_overlay(&app);
@@ -284,6 +289,47 @@ fn provider_status() -> std::collections::HashMap<&'static str, bool> {
     status
 }
 
+/// Mirrors snippets::store_path — settings.json lives beside snippets.json.
+fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+#[tauri::command]
+fn get_settings(app: tauri::AppHandle) -> Result<settings::Settings, String> {
+    Ok(settings::load(&settings_path(&app)?))
+}
+
+/// Writes the file, then broadcasts the new settings to every window. The AI
+/// panel is only ever hidden, never closed, so it can't be relied on to re-read
+/// config the next time it's shown — it has to be told.
+#[tauri::command]
+fn update_settings(app: tauri::AppHandle, settings: settings::Settings) -> Result<(), String> {
+    settings::save(&settings_path(&app)?, &settings)?;
+    let _ = app.emit("settings-changed", settings);
+    Ok(())
+}
+
+/// Shows the settings window, optionally jumping to a section. Both entry points
+/// (the wheel wedge and the AI panel's deep-link) funnel through here so they
+/// can't drift apart; the wedge passes `None` and leaves the last-selected
+/// section in place.
+#[tauri::command]
+fn open_settings(app: tauri::AppHandle, section: Option<String>) {
+    show_utility_window(&app, SETTINGS_LABEL);
+    if let Some(section) = section {
+        let _ = app.emit("settings-navigate", section);
+    }
+}
+
+/// Required once Settings owns key management: with no inline form to overwrite
+/// a key, "remove" is the only way to clear one.
+#[tauri::command]
+fn delete_api_key(provider: String) -> Result<(), String> {
+    ai::delete_api_key(ai::Provider::from_str(&provider)?)
+}
+
 /// Streams a response on a background thread (blocking HTTP must not run on
 /// the UI/event-loop thread) and emits `ai-delta` chunks as they arrive,
 /// followed by `ai-done` or `ai-error`.
@@ -383,7 +429,11 @@ pub fn run() {
             send_ai_message,
             insert_ai_response,
             transcribe_for_ai,
-            speak_text
+            speak_text,
+            get_settings,
+            update_settings,
+            open_settings,
+            delete_api_key
         ])
         .setup(|app| {
             asr::preload_model();
@@ -468,6 +518,23 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = aip.hide();
+                }
+            });
+
+            let settings_window =
+                WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
+                    .title("Synapse — Settings")
+                    .inner_size(720.0, 520.0)
+                    .visible(false)
+                    .build()?;
+            #[cfg(debug_assertions)]
+            settings_window.open_devtools();
+
+            let sw = settings_window.clone();
+            settings_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = sw.hide();
                 }
             });
 

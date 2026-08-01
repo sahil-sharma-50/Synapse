@@ -62,6 +62,15 @@ pub fn has_api_key(provider: Provider) -> bool {
         .is_ok()
 }
 
+pub fn delete_api_key(provider: Provider) -> Result<(), String> {
+    match entry(provider)?.delete_credential() {
+        Ok(()) => Ok(()),
+        // Removing a key that isn't there is the state the caller wanted.
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 fn get_api_key(provider: Provider) -> Result<String, String> {
     entry(provider)?
         .get_password()
