@@ -16,6 +16,7 @@ const NOTEPAD_LABEL: &str = "notepad";
 const SNIPPET_LABEL: &str = "snippet-picker";
 const AI_LABEL: &str = "ai-panel";
 const SETTINGS_LABEL: &str = "settings";
+const ONBOARDING_LABEL: &str = "onboarding";
 // Window is intentionally larger than the wheel itself (wheel diameter 300 in
 // App.tsx): the extra margin gives the CSS drop-shadow room to fade out inside
 // the window. Without it the shadow clips at the window edge and reads as a
@@ -597,6 +598,46 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = sw.hide();
+                }
+            });
+
+            // Unlike the hide-on-close utility windows above, onboarding is one-time:
+            // closing it (by any means — finishing the wizard or the title-bar X) marks
+            // onboarding_complete and lets the window actually be destroyed, same as
+            // Tauri's default close behavior. It's shown automatically on first launch
+            // and never again after that — there is no "redo onboarding" entry point.
+            let initial_settings = settings::load(&settings_path(app.handle())?);
+            let show_onboarding = !initial_settings.onboarding_complete;
+
+            let onboarding =
+                WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
+                    .title("Synapse — Setup")
+                    .inner_size(480.0, 600.0)
+                    .resizable(false)
+                    .center()
+                    .visible(show_onboarding)
+                    .build()?;
+            #[cfg(debug_assertions)]
+            onboarding.open_devtools();
+
+            // Closing early (the X button, at any step) is treated the same as
+            // finishing the wizard: mark onboarding_complete so it doesn't reappear.
+            // Anything left undone (mic not granted, model not downloaded) stays
+            // recoverable later — mic via Windows' own Settings, model via
+            // Settings > Voice. Handled here in Rust rather than relying on frontend
+            // JS to run on unload, which isn't guaranteed to fire in time.
+            let onboarding_handle = app.handle().clone();
+            onboarding.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    if let Ok(path) = settings_path(&onboarding_handle) {
+                        let mut s = settings::load(&path);
+                        if !s.onboarding_complete {
+                            s.onboarding_complete = true;
+                            if settings::save(&path, &s).is_ok() {
+                                let _ = onboarding_handle.emit("settings-changed", s);
+                            }
+                        }
+                    }
                 }
             });
 
