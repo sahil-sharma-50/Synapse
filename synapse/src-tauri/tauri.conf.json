@@ -25,6 +25,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": ["resources/tts_sidecar.py"],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
