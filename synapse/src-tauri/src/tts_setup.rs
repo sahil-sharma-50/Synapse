@@ -132,8 +132,25 @@ pub fn spawn_setup(app: tauri::AppHandle) {
                 "tts-setup-progress",
                 SetupProgress { stage: "packages".to_string(), bytes_downloaded: 0, bytes_total: 0 },
             );
-            run_pip_install(&python_exe, &["torch", "--index-url", "https://download.pytorch.org/whl/cpu"])?;
-            run_pip_install(&python_exe, &["pocket-tts"])?;
+            // torch itself isn't pinned tightly: the CPU wheel index only
+            // ever serves torch builds compatible with this Python version,
+            // and the feature only needs torch's stable public tensor API.
+            // A `2.x` floor/ceiling is enough to avoid a hypothetical
+            // breaking `3.0` release without pinning to a specific patch
+            // that will inevitably fall off the CPU wheel index.
+            run_pip_install(
+                &python_exe,
+                &["torch>=2.0,<3.0", "--index-url", "https://download.pytorch.org/whl/cpu"],
+            )?;
+            // Pinned exactly (unlike torch above): the sidecar script
+            // imports `pocket_tts.data.audio.stream_audio_chunks`, an
+            // internal module path that pocket-tts does not document or
+            // guarantee as public API (see
+            // docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md).
+            // Only 2.1.0 has been verified against that import; a future
+            // release could rename/move the module and silently fall back
+            // to OS TTS with no diagnosable error.
+            run_pip_install(&python_exe, &["pocket-tts==2.1.0"])?;
 
             // Stage 3: pre-warm model weights with a throwaway request so the
             // first real "speak" doesn't pay the Hugging Face download cost.
@@ -175,14 +192,27 @@ fn extract_python_archive(archive: &Path, dest: &Path) -> Result<(), String> {
 /// This python-build-standalone build ships no `Scripts/pip.exe` shim (pip is
 /// only present as an importable library), so pip must be invoked through the
 /// interpreter itself via `-m pip`, not as a standalone executable.
+/// Windows allocates and flashes a visible console window when a
+/// console-subsystem binary (`python.exe`) is spawned from a GUI app with no
+/// console of its own — `CREATE_NO_WINDOW` suppresses that. No-op on other
+/// platforms.
+fn suppress_console_window(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 fn run_pip_install(python: &Path, args: &[&str]) -> Result<(), String> {
-    let status = std::process::Command::new(python)
-        .arg("-m")
-        .arg("pip")
-        .arg("install")
-        .args(args)
-        .status()
-        .map_err(|e| format!("failed to run pip: {e}"))?;
+    let mut cmd = std::process::Command::new(python);
+    cmd.arg("-m").arg("pip").arg("install").args(args);
+    suppress_console_window(&mut cmd);
+    let status = cmd.status().map_err(|e| format!("failed to run pip: {e}"))?;
     if !status.success() {
         return Err(format!("pip install {args:?} exited with {status}"));
     }
@@ -190,14 +220,16 @@ fn run_pip_install(python: &Path, args: &[&str]) -> Result<(), String> {
 }
 
 fn prewarm_weights(python: &Path, sidecar_script: &Path, scratch_dir: &Path) -> Result<(), String> {
-    use std::io::Write;
-    let mut child = std::process::Command::new(python)
-        .arg(sidecar_script)
+    use std::io::{BufRead, BufReader, Write};
+
+    let mut cmd = std::process::Command::new(python);
+    cmd.arg(sidecar_script)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .stderr(std::process::Stdio::inherit());
+    suppress_console_window(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+
     let out_path = scratch_dir.join("prewarm.wav");
     let request = crate::tts_pocket::SidecarRequest {
         id: 0,
@@ -208,7 +240,37 @@ fn prewarm_weights(python: &Path, sidecar_script: &Path, scratch_dir: &Path) -> 
     if let Some(stdin) = child.stdin.as_mut() {
         writeln!(stdin, "{}", crate::tts_pocket::encode_request(&request)).map_err(|e| e.to_string())?;
     }
-    child.wait().map_err(|e| e.to_string())?;
+
+    // `wait()` alone only tells us the process exited, not that synthesis
+    // actually succeeded — if `pip install pocket-tts` half-succeeded and
+    // `import pocket_tts` raises inside the sidecar, Python can still exit
+    // non-zero *or* the sidecar's own crash-proofing can print a
+    // `{"status":"error",...}` line and exit zero. Read the sidecar's
+    // response line (same protocol `tts_pocket.rs` uses) and require both a
+    // clean exit and an "ok" status before treating prewarm as successful —
+    // otherwise `spawn_setup` would write the READY marker over a broken
+    // environment and every future `speak()` would silently fall back to OS
+    // TTS with the real cause lost.
+    let mut response_line = String::new();
+    let read_result = if let Some(stdout) = child.stdout.take() {
+        BufReader::new(stdout).read_line(&mut response_line).map_err(|e| e.to_string())
+    } else {
+        Err("prewarm sidecar stdout unavailable".to_string())
+    };
+
+    let status = child.wait().map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&out_path);
+
+    if !status.success() {
+        return Err(format!("prewarm sidecar exited with {status}"));
+    }
+    read_result?;
+    let response = crate::tts_pocket::decode_response(response_line.trim())
+        .map_err(|e| format!("prewarm sidecar produced no valid response: {e}"))?;
+    if response.status != "ok" {
+        return Err(response
+            .message
+            .unwrap_or_else(|| "prewarm sidecar reported failure".to_string()));
+    }
     Ok(())
 }

@@ -185,9 +185,7 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
 
                 match inject::copy_selection(&app) {
                     Ok(Some(text)) => {
-                        let app_for_speak = app.clone();
-                        let sidecar = app_for_speak.state::<tts_pocket::TtsSidecar>();
-                        speak_text(app_for_speak.clone(), sidecar, text);
+                        speak_text(app.clone(), text);
                     }
                     Ok(None) => show_toast(&app, "No text selected".to_string()),
                     Err(e) => {
@@ -508,26 +506,29 @@ fn check_mic_access() -> Result<(), String> {
 
 /// Speaks text via pocket-tts when its engine is downloaded, falling back to
 /// OS-native TTS otherwise (not downloaded yet, or the sidecar just failed).
-/// Runs on a background thread so the UI isn't blocked for the duration.
+/// The ENTIRE body runs on a spawned background thread — Tauri commands run
+/// on the main thread by default, and the pocket-tts path (a blocking
+/// subprocess round-trip that may include a multi-second first-run model
+/// load) must never block it, same as the OS-fallback path already did.
 #[tauri::command]
-fn speak_text(app: tauri::AppHandle, sidecar: tauri::State<tts_pocket::TtsSidecar>, text: String) {
-    let sidecar = sidecar.inner();
-    if tts_setup::is_ready(&app) {
-        let voice = settings_path(&app)
-            .map(|p| settings::load(&p).tts.voice)
-            .unwrap_or_else(|_| "alba".to_string());
-        if let (Ok(python_path), Ok(sidecar_path), Ok(out_dir)) = (
-            tts_setup::python_path(&app),
-            tts_setup::sidecar_script_path(&app),
-            tts_setup::tts_scratch_dir(&app),
-        ) {
-            match sidecar.speak(&python_path, &sidecar_path, &text, &voice, &out_dir) {
-                Ok(()) => return,
-                Err(e) => eprintln!("[synapse] pocket-tts failed, falling back to OS TTS: {e}"),
+fn speak_text(app: tauri::AppHandle, text: String) {
+    std::thread::spawn(move || {
+        if tts_setup::is_ready(&app) {
+            let sidecar = app.state::<tts_pocket::TtsSidecar>();
+            let voice = settings_path(&app)
+                .map(|p| settings::load(&p).tts.voice)
+                .unwrap_or_else(|_| "alba".to_string());
+            if let (Ok(python_path), Ok(sidecar_path), Ok(out_dir)) = (
+                tts_setup::python_path(&app),
+                tts_setup::sidecar_script_path(&app),
+                tts_setup::tts_scratch_dir(&app),
+            ) {
+                match sidecar.speak(&python_path, &sidecar_path, &text, &voice, &out_dir) {
+                    Ok(()) => return,
+                    Err(e) => eprintln!("[synapse] pocket-tts failed, falling back to OS TTS: {e}"),
+                }
             }
         }
-    }
-    std::thread::spawn(move || {
         if let Err(e) = tts::speak(&text) {
             eprintln!("[synapse] TTS failed: {e}");
         }
@@ -847,8 +848,17 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // The cached sidecar `Child` (a loaded, possibly multi-GB TTS
+            // model process) is never killed by `Drop` — Rust doesn't kill
+            // child processes on drop, and Windows won't reap it on its own.
+            // Without this, python.exe survives Synapse exiting.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                app_handle.state::<tts_pocket::TtsSidecar>().kill();
+            }
+        });
 }
 
 #[cfg(test)]

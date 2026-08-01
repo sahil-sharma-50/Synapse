@@ -92,7 +92,10 @@ use std::sync::Mutex;
 struct SidecarProcess {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    // `Option` so a read can be handed off to a dedicated timeout-guarding
+    // thread (via `.take()`) and returned afterward — see `speak()`'s
+    // `write_and_read` closure.
+    stdout: Option<BufReader<ChildStdout>>,
 }
 
 /// `rodio::OutputStream` wraps a platform audio handle (`cpal::Stream`) that
@@ -176,6 +179,19 @@ impl TtsSidecar {
         Self::default()
     }
 
+    /// Best-effort kill of the cached sidecar process, if one is running.
+    /// Called on app exit — `Child::drop` does not kill the child process,
+    /// and Windows won't reap an orphaned `python.exe` on its own, so
+    /// without this the sidecar (holding a loaded, possibly multi-GB TTS
+    /// model) would keep running in the background after Synapse quits.
+    pub fn kill(&self) {
+        if let Ok(mut guard) = self.process.lock() {
+            if let Some(mut proc) = guard.take() {
+                let _ = proc.child.kill();
+            }
+        }
+    }
+
     fn ensure_process(
         &self,
         python_path: &std::path::Path,
@@ -185,16 +201,23 @@ impl TtsSidecar {
         if guard.is_some() {
             return Ok(());
         }
-        let mut child = Command::new(python_path)
-            .arg(sidecar_path)
+        let mut cmd = Command::new(python_path);
+        cmd.arg(sidecar_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| format!("failed to start tts sidecar: {e}"))?;
+            .stderr(Stdio::inherit());
+        // python.exe is a console-subsystem binary; spawned from a GUI app
+        // with no console of its own, Windows would otherwise flash a new
+        // console window on screen for the lifetime of the sidecar.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let mut child = cmd.spawn().map_err(|e| format!("failed to start tts sidecar: {e}"))?;
         let stdin = child.stdin.take().ok_or("sidecar stdin unavailable")?;
         let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
-        *guard = Some(SidecarProcess { child, stdin, stdout: BufReader::new(stdout) });
+        *guard = Some(SidecarProcess { child, stdin, stdout: Some(BufReader::new(stdout)) });
         Ok(())
     }
 
@@ -226,16 +249,49 @@ impl TtsSidecar {
             out_path: out_path.to_string_lossy().to_string(),
         };
 
+        // `read_line` below has no built-in timeout. If the Python process
+        // hangs (stuck model load, deadlock, etc.) a plain blocking read
+        // would never return — and because it runs while `self.process` is
+        // locked, every future `speak()` call would wedge on the same mutex
+        // for the rest of the session. To bound the wait, the actual read
+        // happens on its own thread and this closure waits on it with
+        // `recv_timeout`; a timeout is treated as a failure like any other
+        // `write_and_read` error, which clears the cached process below so
+        // the next call respawns a fresh sidecar instead of staying stuck.
+        const SIDECAR_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
         let write_and_read = || -> Result<SidecarResponse, String> {
             let mut guard = self.process.lock().map_err(|_| "sidecar lock poisoned")?;
             let proc = guard.as_mut().ok_or("sidecar not running")?;
             writeln!(proc.stdin, "{}", encode_request(&request)).map_err(|e| e.to_string())?;
-            let mut line = String::new();
-            proc.stdout.read_line(&mut line).map_err(|e| e.to_string())?;
-            if line.is_empty() {
-                return Err("sidecar closed its output".to_string());
+
+            // `BufReader<ChildStdout>` can't be read from two threads at
+            // once, so temporarily hand ownership of just the stdout buffer
+            // to the reader thread (via `.take()`) and reclaim it afterward.
+            let mut stdout = proc.stdout.take().ok_or("sidecar stdout unavailable")?;
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let mut line = String::new();
+                let result = stdout.read_line(&mut line).map_err(|e| e.to_string());
+                let _ = tx.send((stdout, result, line));
+            });
+
+            match rx.recv_timeout(SIDECAR_READ_TIMEOUT) {
+                Ok((stdout, result, line)) => {
+                    proc.stdout = Some(stdout);
+                    result?;
+                    if line.is_empty() {
+                        return Err("sidecar closed its output".to_string());
+                    }
+                    decode_response(line.trim())
+                }
+                // The reader thread is still blocked on `read_line` and owns
+                // `stdout` — it's intentionally leaked here rather than
+                // joined (joining would defeat the point of the timeout).
+                // `proc.stdout` stays `None`, so the caller below clears the
+                // whole cached process and the next `speak()` respawns a
+                // fresh sidecar rather than trying to reuse a half-broken one.
+                Err(_) => Err("sidecar timed out waiting for a response".to_string()),
             }
-            decode_response(line.trim())
         };
 
         let response = match write_and_read() {
