@@ -417,6 +417,11 @@ fn transcribe_for_ai() -> Result<String, String> {
     asr::record_and_transcribe()
 }
 
+#[tauri::command]
+fn check_mic_access() -> Result<(), String> {
+    asr::check_mic_access()
+}
+
 /// Speaks text via OS-native TTS on a background thread so the UI isn't
 /// blocked for the duration of playback.
 #[tauri::command]
@@ -483,6 +488,7 @@ pub fn run() {
             send_ai_message,
             insert_ai_response,
             transcribe_for_ai,
+            check_mic_access,
             speak_text,
             get_settings,
             update_settings,

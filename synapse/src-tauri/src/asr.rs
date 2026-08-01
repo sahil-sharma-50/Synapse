@@ -200,3 +200,41 @@ pub fn record_and_transcribe() -> Result<String, String> {
 
     Ok(result.text)
 }
+
+/// Briefly opens (and immediately drops) an input stream to confirm Windows
+/// currently allows this app microphone access. Used only by onboarding —
+/// normal dictation doesn't pre-check, it just tries to record and reports
+/// failure inline if that happens.
+pub fn check_mic_access() -> Result<(), String> {
+    let host = cpal::default_host();
+    let device = host
+        .default_input_device()
+        .ok_or("no microphone found — check that an input device is connected and enabled")?;
+
+    let supported = device
+        .default_input_config()
+        .map_err(|e| format!("could not read microphone config: {e}"))?;
+    let sample_format = supported.sample_format();
+    let config: cpal::StreamConfig = supported.into();
+
+    let buffer = Arc::new(Mutex::new(Vec::<f32>::new()));
+    let done = Arc::new(AtomicBool::new(false));
+    let state = Arc::new(Mutex::new(SilenceState {
+        heard_speech: false,
+        silence_since: None,
+    }));
+
+    let stream = match sample_format {
+        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        other => Err(format!("unsupported microphone sample format: {other:?}")),
+    }?;
+
+    stream.play().map_err(|e| format!("microphone access blocked: {e}"))?;
+    drop(stream);
+    Ok(())
+}
