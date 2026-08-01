@@ -8,6 +8,7 @@ export interface AiSettings {
 
 export interface Settings {
   ai: AiSettings;
+  onboarding_complete: boolean;
 }
 
 export const PROVIDER_LABELS: Record<Provider, string> = {

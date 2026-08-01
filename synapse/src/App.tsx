@@ -4,6 +4,7 @@ import Notepad from "./Notepad";
 import SnippetPicker from "./SnippetPicker";
 import AiPanel from "./AiPanel";
 import Settings from "./Settings";
+import Onboarding from "./Onboarding";
 
 // Every window loads the same index.html, so routing keys off the window
 // label set in src-tauri/src/lib.rs. (A URL hash was tried first — Tauri
@@ -21,6 +22,8 @@ export default function App() {
       return <AiPanel />;
     case "settings":
       return <Settings />;
+    case "onboarding":
+      return <Onboarding />;
     default:
       return <Wheel />;
   }
