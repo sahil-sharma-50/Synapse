@@ -1,0 +1,24 @@
+.notepad-root {
+  width: 100%;
+  height: 100%;
+  background: #1a1a1c;
+}
+
+.notepad-textarea {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: #eaeaea;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.notepad-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
