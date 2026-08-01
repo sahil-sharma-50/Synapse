@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { PROVIDER_LABELS, modelFor, type Provider, type Settings } from "./models";
 import "./AiPanel.css";
 
-type Provider = "anthropic" | "openai";
-
 export default function AiPanel() {
-  const [provider, setProvider] = useState<Provider>("anthropic");
-  const [status, setStatus] = useState<Record<Provider, boolean>>({ anthropic: false, openai: false });
-  const [keyInput, setKeyInput] = useState("");
+  // Config is owned by the Settings window now; this panel just reads it.
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [hasKey, setHasKey] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -19,11 +18,25 @@ export default function AiPanel() {
   const speakRepliesRef = useRef(speakReplies);
   speakRepliesRef.current = speakReplies;
 
-  function refreshStatus() {
-    invoke<Record<Provider, boolean>>("provider_status").then(setStatus);
+  function refresh() {
+    invoke<Settings>("get_settings").then((s) => {
+      setSettings(s);
+      invoke<Record<Provider, boolean>>("provider_status").then((status) =>
+        setHasKey(status[s.ai.provider]),
+      );
+    });
   }
 
-  useEffect(refreshStatus, []);
+  useEffect(refresh, []);
+
+  // The panel is hidden rather than closed, so an open window would otherwise
+  // keep showing stale config after Settings changed it.
+  useEffect(() => {
+    const unlisten = listen<Settings>("settings-changed", () => refresh());
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   useEffect(() => {
     const unlistenDelta = listen<string>("ai-delta", (e) => {
@@ -47,20 +60,6 @@ export default function AiPanel() {
     };
   }, []);
 
-  // Only clear the input once the key is confirmed stored — wiping it first
-  // meant a failed save silently ate the key the user had just typed.
-  async function saveKey() {
-    if (!keyInput.trim()) return;
-    try {
-      setError("");
-      await invoke("set_api_key", { provider, key: keyInput.trim() });
-      setKeyInput("");
-      refreshStatus();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   function send(overridePrompt?: string) {
     const text = (overridePrompt ?? prompt).trim();
     if (!text || streaming) return;
@@ -68,7 +67,7 @@ export default function AiPanel() {
     setResponse("");
     setError("");
     setStreaming(true);
-    invoke("send_ai_message", { provider, prompt: text });
+    invoke("send_ai_message", { provider: settings?.ai.provider, prompt: text });
   }
 
   async function recordAndSend() {
@@ -93,21 +92,13 @@ export default function AiPanel() {
     invoke("insert_ai_response", { content: response });
   }
 
-  const hasKey = status[provider];
-
   return (
     <div className="ai-root">
       <div className="ai-provider-row">
-        <select
-          className="ai-provider-select"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value as Provider)}
-        >
-          <option value="anthropic">Anthropic</option>
-          <option value="openai">OpenAI</option>
-        </select>
-        <span className={`ai-key-badge ${hasKey ? "ai-key-ok" : "ai-key-missing"}`}>
-          {hasKey ? "Key set" : "No key"}
+        <span className="ai-config">
+          {settings
+            ? `${PROVIDER_LABELS[settings.ai.provider]} · ${modelFor(settings, settings.ai.provider)}`
+            : "…"}
         </span>
         <label className="ai-speak-toggle">
           <input
@@ -119,27 +110,23 @@ export default function AiPanel() {
         </label>
       </div>
 
-      {!hasKey && (
-        <div className="ai-key-form">
-          <input
-            className="ai-key-input"
-            type="password"
-            placeholder={`${provider === "anthropic" ? "Anthropic" : "OpenAI"} API key`}
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && saveKey()}
-          />
-          <button className="ai-key-save" onClick={saveKey}>
-            Save
-          </button>
-        </div>
-      )}
-
       <div className="ai-response-area">
         {error && <div className="ai-error">{error}</div>}
         {!error && response && <div className="ai-response-text">{response}</div>}
         {!error && !response && !streaming && !recording && (
-          <div className="ai-empty">Ask something below, or use the mic…</div>
+          hasKey ? (
+            <div className="ai-empty">Ask something below, or use the mic…</div>
+          ) : (
+            <div className="ai-empty">
+              No API key set.
+              <button
+                className="ai-settings-link"
+                onClick={() => invoke("open_settings", { section: "ai" })}
+              >
+                Open Settings…
+              </button>
+            </div>
+          )
         )}
         {recording && <div className="ai-empty">Listening…</div>}
         {streaming && !response && <div className="ai-empty">Thinking…</div>}
