@@ -39,6 +39,15 @@ To build a production bundle:
 npm run tauri build
 ```
 
+## Speech-to-Text model
+
+Local dictation uses the [Parakeet TDT 0.6B v2](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx) ONNX model. It isn't checked into this repo (~690 MB) and must be downloaded separately before `npm run tauri dev` will load it:
+
+1. Download `config.json`, `decoder_joint-model.onnx`, `encoder-model.onnx`, and `vocab.txt` from the [model repo](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/main).
+2. Place all four files in `synapse/src-tauri/model/` (create the folder if it doesn't exist).
+
+`synapse/src-tauri/model/` is gitignored, so this step needs to be repeated on every machine you run the app on.
+
 ## Project structure
 
 - `synapse/src` - React/TypeScript frontend
