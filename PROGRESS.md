@@ -1,12 +1,16 @@
 # Synapse — Session Handoff
 
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 **Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
 foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);
 manual click-through with a real API key is still pending — see "Known gaps" below. M5
 sub-project C + M6 (onboarding wizard, resumable model download, Windows `.exe` installer packaging) is
 now shipped, clearing the ship-blocker — see "Known gaps" below for what's automated-verified vs.
-still a manual-only pass. M5 sub-project B (remaining settings sections) not started.
+still a manual-only pass. M5 sub-project B (remaining settings sections) not started. **Speak
+Selected Text** (pocket-tts sidecar TTS feature) is built and automated-verified (31 Rust tests +
+typecheck clean, whole-branch code review clean after fixes), on branch
+`worktree-speak-selected-text` pending merge — see its write-up below; the manual end-to-end
+pass (real download/install/playback) is still pending.
 
 Read `synapse_prd.md` (rewritten this session) and the plan file at
 `C:\Users\sahil\.claude\plans\so-i-am-working-ticklish-sunbeam.md` for full context/rationale.
@@ -282,6 +286,62 @@ closed the window and persisted `onboarding_complete`.
 the header art reads on the fresh-install pages (only the "already installed" maintenance page
 was seen).
 
+## Speak Selected Text — pocket-tts sidecar (2026-08-02)
+
+New wheel action: select text anywhere, trigger the wheel, choose "Speak Selected Text" and it's
+read aloud via a bundled pocket-tts (Kyutai) Python sidecar, falling back to the existing
+OS-native TTS when the engine isn't downloaded or the sidecar fails. Built via
+`docs/superpowers/plans/2026-08-01-speak-selected-text.md`, executed task-by-task with
+subagent-driven development (each task independently implemented and reviewed; a final
+whole-branch review caught and fixed 5 issues before merge). Research spike notes (real
+pocket-tts API + python-build-standalone release, since the plan's own draft code used
+placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
+
+- **Architecture**: `tts_pocket.rs` owns a long-lived Python child process (spawned lazily) and
+  talks newline-delimited JSON over its stdin/stdout. A single dedicated background thread owns
+  all `rodio::OutputStream`/`Sink` creation, playback, and drop — `speak()` (callable from any
+  thread) only ever sends `PlaybackCommand`s over an `mpsc` channel. This design replaced an
+  earlier `unsafe impl Send` wrapper around `rodio::OutputStream` that a task review caught as
+  unsound (real risk of cross-thread COM/WASAPI teardown issues on Windows); no `unsafe` remains
+  in the final code.
+- **`tts_setup.rs`** downloads an embeddable Python runtime (python-build-standalone,
+  `install_only` variant), `pip install`s `torch>=2.0,<3.0` + `pocket-tts==2.1.0` (pinned exactly
+  — the sidecar depends on `pocket_tts.data.audio.stream_audio_chunks`, an internal/non-public
+  module verified only against 2.1.0), and pre-warms model weights with a throwaway request,
+  reusing `model_download::download_one_file`/`remote_file_size` rather than reimplementing
+  chunked download logic. Two corrections to the plan's own draft code, found only by actually
+  downloading and inspecting the real release archive: it must be unpacked into the *parent* of
+  the python directory (the archive's paths already start with `python/...`), and pip must be
+  invoked as `python.exe -m pip install` — this archive has no `Scripts/pip.exe`.
+- **`resources/tts_sidecar.py`** loads the model once at import (`TTSModel.load_model()`), then
+  per request calls `get_state_for_audio_prompt(voice)` → `generate_audio_stream(...)` →
+  `stream_audio_chunks(out_path, chunks, sample_rate)`. Hardened to never crash the long-lived
+  worker on a malformed stdin line (unguarded `json.loads` and a secondary crash inside the
+  except-handler's own fallback were both found and fixed during task review).
+- **Voices**: only 6 real pocket-tts built-in voices exist (`alba`, `giovanni`, `lola`, `juergen`,
+  `rafael`, `estelle`, one per supported language) — the plan's draft invented a fictional
+  25-name list, corrected during implementation of the Settings voice picker.
+- **Final-review fixes** (all found by a whole-branch review after all 12 tasks landed, all fixed
+  before merge — see `git log` for the fix commits): `speak_text` was only backgrounding its
+  OS-TTS fallback path, not the pocket-tts path, so a first-run model load or a stalled sidecar
+  would have frozen the whole app; added a 30s read timeout so a hung sidecar can't wedge the
+  process mutex forever, and kills (rather than silently orphans) an abandoned child on any
+  write/read failure; `prewarm_weights` now checks the child's real exit status/response instead
+  of treating `wait()` returning `Ok` as success (previously a broken pip install could still get
+  marked `READY`); all `python.exe`/`pip` spawns now set `CREATE_NO_WINDOW` on Windows; the
+  cached sidecar process is now killed on `RunEvent::ExitRequested` instead of being leaked past
+  app exit.
+- **Automated-verified**: 31 Rust unit tests pass (settings default/persist/missing-section,
+  selected-text-capture decision logic, sidecar protocol encode/decode + staleness detection,
+  setup marker-file readiness), `cargo build` and `npx tsc --noEmit` both clean.
+- **Not verified** (needs a live display + audio device + real network bandwidth, none available
+  in the environment this was built in): the actual `download_tts_engine` pipeline end-to-end
+  (Python runtime download, pip install, weight prewarm), sidecar process spawn/respawn on a real
+  machine, audio playback, the wheel wedge's visual layout, Settings → Voice and the onboarding
+  step's UI. One already-known cosmetic gap: the voice `<select>` in Settings uses
+  `className="set-select"` but no matching rule exists yet in `Settings.css`, so it'll render
+  unstyled until that's added.
+
 ## Known gaps / not yet done
 
 - **M5 sub-project A manual verification** — see above.
@@ -302,6 +362,13 @@ was seen).
 - No frontend automated tests exist (by design for sub-project A — see the design doc's "Out of
   scope"); Rust has 4 unit tests (`settings.rs` × 3, `ai.rs` × 1). Everything else is manual
   click-through.
+- **Speak Selected Text (see write-up above) — manual end-to-end pass not yet done.** Everything
+  runtime (Python download, pip install, weight prewarm, sidecar spawn, audio playback, wheel
+  wedge layout, Settings/onboarding UI) is manual-verification-only and hasn't been observed
+  running yet. `.set-select` CSS rule is missing for the voice dropdown (cosmetic).
+  `python_path()` isn't dogfooded by `prewarm_weights` (minor DRY nit), and the downloaded
+  python-build-standalone tarball is left on disk inside the wipeable `tts-env/` directory after
+  extraction (disk space only). macOS is untested for this feature same as everything else.
 
 ## Next steps, in order
 
@@ -312,6 +379,11 @@ was seen).
    settings/model files, and confirm the standard installer behaviors (SmartScreen, per-user
    install, Start Menu shortcut, Apps listing, uninstall).
 3. M5 sub-project B: the remaining settings sections, including the Quit button.
-4. macOS packaging (`.dmg`, ad-hoc signing) — blocked on having a Mac to test.
-5. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
+4. **Speak Selected Text — manual end-to-end pass** (see write-up above): download the TTS
+   engine from Settings → Voice, confirm all three setup stages complete, pick a voice, select
+   text in another app and speak it, verify interrupting mid-speech works, verify the AI panel's
+   read-aloud also picks up the pocket-tts voice, and verify the OS-native fallback still works
+   when the engine isn't downloaded.
+5. macOS packaging (`.dmg`, ad-hoc signing) — blocked on having a Mac to test.
+6. Whenever a Mac becomes available: validate the entire macOS code path before assuming any of
    it works — vibrancy, focus behavior, Gatekeeper/TCC flow, permissions.
