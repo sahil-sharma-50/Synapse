@@ -330,9 +330,6 @@ fn delete_api_key(provider: String) -> Result<(), String> {
     ai::delete_api_key(ai::Provider::from_str(&provider)?)
 }
 
-/// Streams a response on a background thread (blocking HTTP must not run on
-/// the UI/event-loop thread) and emits `ai-delta` chunks as they arrive,
-/// followed by `ai-done` or `ai-error`.
 #[tauri::command]
 fn send_ai_message(app: tauri::AppHandle, provider: String, prompt: String) {
     std::thread::spawn(move || {
@@ -343,7 +340,14 @@ fn send_ai_message(app: tauri::AppHandle, provider: String, prompt: String) {
                 return;
             }
         };
-        match ai::stream_chat(&app, provider, &prompt) {
+        let model = match settings_path(&app) {
+            Ok(path) => settings::load(&path).ai.model_for(provider).to_string(),
+            Err(e) => {
+                let _ = app.emit("ai-error", e);
+                return;
+            }
+        };
+        match ai::stream_chat(&app, provider, &model, &prompt) {
             Ok(text) => {
                 let _ = app.emit("ai-done", text);
             }

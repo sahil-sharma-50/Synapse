@@ -5,12 +5,6 @@ use std::io::{BufRead, BufReader};
 use tauri::Emitter;
 
 const KEYRING_SERVICE: &str = "com.synapse.app";
-
-// No Settings UI exists yet (M5) to pick a model — default to Sonnet 5 for a
-// good cost/latency balance on a quick-assistant panel. Revisit once a model
-// picker exists.
-const ANTHROPIC_MODEL: &str = "claude-sonnet-5";
-const OPENAI_MODEL: &str = "gpt-4o-mini";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq)]
@@ -82,9 +76,12 @@ fn get_api_key(provider: Provider) -> Result<String, String> {
 /// Blocking + a plain `BufReader` line loop rather than async reqwest + tokio
 /// — SSE is line-delimited, so this needs no async runtime, consistent with
 /// the rest of the app's thread-per-task style (see asr.rs).
+/// `model` is resolved by the caller from settings — this module does no file
+/// I/O, so it stays a pure HTTP/SSE client.
 pub fn stream_chat(
     app: &tauri::AppHandle,
     provider: Provider,
+    model: &str,
     prompt: &str,
 ) -> Result<String, String> {
     let api_key = get_api_key(provider)?;
@@ -97,8 +94,11 @@ pub fn stream_chat(
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&json!({
-                "model": ANTHROPIC_MODEL,
-                "max_tokens": 4096,
+                "model": model,
+                // Headroom for thinking: on claude-opus-5 (offered in the model
+                // picker) thinking is on by default and max_tokens caps thinking
+                // *plus* response text, so a tight limit truncates mid-answer.
+                "max_tokens": 16000,
                 "stream": true,
                 "messages": [{"role": "user", "content": prompt}],
             }))
@@ -108,7 +108,7 @@ pub fn stream_chat(
             .header("Authorization", format!("Bearer {api_key}"))
             .header("content-type", "application/json")
             .json(&json!({
-                "model": OPENAI_MODEL,
+                "model": model,
                 "stream": true,
                 "messages": [{"role": "user", "content": prompt}],
             }))
