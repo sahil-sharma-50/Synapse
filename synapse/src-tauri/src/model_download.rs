@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn skips_download_when_final_file_already_exists() {
-        let mut server = mockito::Server::new();
+        let server = mockito::Server::new();
         // No mock registered for GET — if the function makes a request at
         // all, `.create()` never having been called means mockito's server
         // returns a generic 501, which download_one_file would surface as
