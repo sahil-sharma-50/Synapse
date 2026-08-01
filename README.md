@@ -8,7 +8,7 @@ Synapse is a cross-platform (macOS + Windows) desktop utility that puts voice di
 
 ## Download
 
-**[Download the latest Windows installer](https://github.com/sahil-sharma-50/Synapse/releases/latest)** — grab `Synapse_x64-setup.exe` from the Releases page and run it. No need to clone the repo or build from source. The installer's first-run onboarding wizard downloads the speech-to-text model automatically.
+**[Download the latest Windows installer](https://github.com/sahil-sharma-50/Synapse/releases/latest)** — grab `Synapse_0.1.0_x64-setup.exe` from the Releases page and run it. No need to clone the repo or build from source. The installer's first-run onboarding wizard downloads the speech-to-text model automatically.
 
 ## Features
 
