@@ -297,9 +297,20 @@ impl TtsSidecar {
         let response = match write_and_read() {
             Ok(r) => r,
             Err(e) => {
-                // Drop the dead process so the next call respawns it.
+                // Drop the dead process so the next call respawns it. A
+                // write/read failure (including a timeout) does not imply
+                // the child has actually exited — `Child::drop` does not
+                // kill the OS process, so an unresponsive sidecar would
+                // otherwise be silently abandoned/orphaned (still running,
+                // still holding a loaded model) with nothing left able to
+                // reach it, since `self.process` is about to be cleared.
+                // Killing first (best-effort; a harmless no-op if the
+                // process already exited) also unblocks the leaked reader
+                // thread on the timeout path by closing its stdout pipe.
                 if let Ok(mut guard) = self.process.lock() {
-                    *guard = None;
+                    if let Some(mut proc) = guard.take() {
+                        let _ = proc.child.kill();
+                    }
                 }
                 return Err(e);
             }
