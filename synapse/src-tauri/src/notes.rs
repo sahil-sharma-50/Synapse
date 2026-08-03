@@ -23,3 +23,10 @@ pub fn write(app: &tauri::AppHandle, content: &str) -> Result<(), String> {
     let path = note_path(app)?;
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
+
+pub fn read_from(path: &str) -> Result<String, String> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => Ok(content),
+        Err(e) => Err(e.to_string()),
+    }
+}
