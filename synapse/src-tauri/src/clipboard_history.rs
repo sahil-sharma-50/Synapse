@@ -56,7 +56,13 @@ pub fn record(mut list: Vec<ClipEntry>, text: &str, now: i64) -> Option<Vec<Clip
 
     list.insert(
         0,
-        ClipEntry { id: new_id(), text: text.to_string(), copied_at: now, pinned: false, name: None },
+        ClipEntry {
+            id: new_id(),
+            text: text.to_string(),
+            copied_at: now,
+            pinned: false,
+            name: None,
+        },
     );
 
     // Evict from the tail, skipping pinned entries — a user who pinned
@@ -303,9 +309,7 @@ mod tests {
 
     #[test]
     fn caps_unpinned_entries_at_the_maximum() {
-        let mut list: Vec<ClipEntry> = (0..MAX_ENTRIES)
-            .map(|i| entry(&format!("entry {i}"), false))
-            .collect();
+        let mut list: Vec<ClipEntry> = (0..MAX_ENTRIES).map(|i| entry(&format!("entry {i}"), false)).collect();
         list = record(list, "one more", 1).expect("recorded");
         assert_eq!(list.len(), MAX_ENTRIES);
         assert_eq!(list[0].text, "one more");

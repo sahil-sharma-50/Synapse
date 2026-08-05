@@ -425,10 +425,7 @@ fn position_is_visible(app: &tauri::AppHandle, x: i32, y: i32) -> bool {
         let s = m.size();
         // Require a decent slice of the title bar to be on-screen, not just the
         // last pixel of a corner.
-        x + 80 >= p.x
-            && x <= p.x + s.width as i32 - 40
-            && y >= p.y
-            && y <= p.y + s.height as i32 - 40
+        x + 80 >= p.x && x <= p.x + s.width as i32 - 40 && y >= p.y && y <= p.y + s.height as i32 - 40
     })
 }
 
@@ -989,7 +986,12 @@ fn resolve_voice_paths(app: &tauri::AppHandle) -> Option<VoicePaths> {
         tts_setup::sidecar_script_path(app),
         tts_setup::tts_scratch_dir(app),
     ) {
-        (Ok(python), Ok(script), Ok(out_dir)) => Some(VoicePaths { python, script, out_dir, voice }),
+        (Ok(python), Ok(script), Ok(out_dir)) => Some(VoicePaths {
+            python,
+            script,
+            out_dir,
+            voice,
+        }),
         _ => None,
     }
 }
@@ -1269,11 +1271,12 @@ pub fn run() {
                 }
             }
 
-            let clipboard_window = WebviewWindowBuilder::new(app, CLIPBOARD_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse - Clipboard")
-                .inner_size(460.0, 560.0)
-                .visible(false)
-                .build()?;
+            let clipboard_window =
+                WebviewWindowBuilder::new(app, CLIPBOARD_LABEL, WebviewUrl::App("index.html".into()))
+                    .title("Synapse - Clipboard")
+                    .inner_size(460.0, 560.0)
+                    .visible(false)
+                    .build()?;
             #[cfg(debug_assertions)]
             clipboard_window.open_devtools();
 
@@ -1307,12 +1310,11 @@ pub fn run() {
                 }
             });
 
-            let settings_window =
-                WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
-                    .title("Synapse - Settings")
-                    .inner_size(720.0, 520.0)
-                    .visible(false)
-                    .build()?;
+            let settings_window = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
+                .title("Synapse - Settings")
+                .inner_size(720.0, 520.0)
+                .visible(false)
+                .build()?;
             #[cfg(debug_assertions)]
             settings_window.open_devtools();
 
@@ -1343,14 +1345,13 @@ pub fn run() {
             let fresh_install = take_fresh_install_marker(&app.path().app_data_dir()?);
             let show_onboarding = fresh_install || !initial_settings.onboarding_complete;
 
-            let onboarding =
-                WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
-                    .title("Setup")
-                    .inner_size(480.0, 600.0)
-                    .resizable(false)
-                    .center()
-                    .visible(false)
-                    .build()?;
+            let onboarding = WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
+                .title("Setup")
+                .inner_size(480.0, 600.0)
+                .resizable(false)
+                .center()
+                .visible(false)
+                .build()?;
             #[cfg(debug_assertions)]
             onboarding.open_devtools();
 
@@ -1410,17 +1411,17 @@ pub fn run() {
             // tray is the only persistent, clickable proof it's running, and the
             // only way to reach the app or quit it without knowing the hotkeys.
             let open_item = MenuItem::with_id(app, "open", "Open wheel\tCtrl+Alt+Enter", true, None::<&str>)?;
-            let dictate_item =
-                MenuItem::with_id(app, "dictate", "Start dictation\tCtrl+Alt+D", true, None::<&str>)?;
+            let dictate_item = MenuItem::with_id(app, "dictate", "Start dictation\tCtrl+Alt+D", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Synapse", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(
-                app,
-                &[&open_item, &dictate_item, &settings_item, &quit_item],
-            )?;
+            let tray_menu = Menu::with_items(app, &[&open_item, &dictate_item, &settings_item, &quit_item])?;
 
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().ok_or("no bundled app icon for the tray")?)
+                .icon(
+                    app.default_window_icon()
+                        .cloned()
+                        .ok_or("no bundled app icon for the tray")?,
+                )
                 .tooltip("Synapse")
                 .menu(&tray_menu)
                 // Left click summons the wheel (below); without this the menu

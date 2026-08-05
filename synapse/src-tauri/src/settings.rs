@@ -109,7 +109,9 @@ fn default_true() -> bool {
 
 impl Default for ClipboardSettings {
     fn default() -> Self {
-        Self { history_enabled: default_true() }
+        Self {
+            history_enabled: default_true(),
+        }
     }
 }
 
@@ -305,6 +307,9 @@ mod tests {
         std::fs::write(&path, r#"{"ai":{"provider":"anthropic"}}"#).expect("write settings");
 
         let settings = load(&path);
-        assert_eq!(settings.tts.voice, "alba", "missing tts section defaults, does not fail parse");
+        assert_eq!(
+            settings.tts.voice, "alba",
+            "missing tts section defaults, does not fail parse"
+        );
     }
 }

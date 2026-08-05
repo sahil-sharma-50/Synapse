@@ -212,9 +212,7 @@ impl Default for TtsSidecar {
                             emit_u64(&audio_app, "tts-started", generation);
                         }
                     }
-                    Some(PlaybackCommand::EndOfUtterance { generation })
-                        if generation >= st.generation =>
-                    {
+                    Some(PlaybackCommand::EndOfUtterance { generation }) if generation >= st.generation => {
                         st.end_signalled = true;
                     }
                     // An End for an utterance we have already moved past.
@@ -318,10 +316,7 @@ impl TtsSidecar {
                             Ok(path) => {
                                 // Check 2: the utterance may have been barged
                                 // in on while we were synthesizing.
-                                if !is_current(
-                                    job.generation,
-                                    sidecar.generation.load(Ordering::SeqCst),
-                                ) {
+                                if !is_current(job.generation, sidecar.generation.load(Ordering::SeqCst)) {
                                     let _ = std::fs::remove_file(&path);
                                     continue;
                                 }
@@ -336,8 +331,9 @@ impl TtsSidecar {
                                 let _ = app.emit("tts-error", e);
                                 // Still end the utterance, or the UI would sit
                                 // in "speaking" forever.
-                                let _ = audio_tx
-                                    .send(PlaybackCommand::EndOfUtterance { generation: job.generation });
+                                let _ = audio_tx.send(PlaybackCommand::EndOfUtterance {
+                                    generation: job.generation,
+                                });
                             }
                         }
                     }
@@ -385,11 +381,7 @@ impl TtsSidecar {
         }
     }
 
-    fn ensure_process(
-        &self,
-        python_path: &std::path::Path,
-        sidecar_path: &std::path::Path,
-    ) -> Result<(), String> {
+    fn ensure_process(&self, python_path: &std::path::Path, sidecar_path: &std::path::Path) -> Result<(), String> {
         let mut guard = self.process.lock().map_err(|_| "sidecar lock poisoned")?;
         if guard.is_some() {
             return Ok(());
@@ -410,7 +402,11 @@ impl TtsSidecar {
         let mut child = cmd.spawn().map_err(|e| format!("failed to start tts sidecar: {e}"))?;
         let stdin = child.stdin.take().ok_or("sidecar stdin unavailable")?;
         let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
-        *guard = Some(SidecarProcess { child, stdin, stdout: Some(BufReader::new(stdout)) });
+        *guard = Some(SidecarProcess {
+            child,
+            stdin,
+            stdout: Some(BufReader::new(stdout)),
+        });
         Ok(())
     }
 
@@ -549,8 +545,7 @@ mod tests {
 
     #[test]
     fn decodes_error_response_with_message() {
-        let response =
-            decode_response(r#"{"id":3,"status":"error","message":"boom"}"#).expect("valid response");
+        let response = decode_response(r#"{"id":3,"status":"error","message":"boom"}"#).expect("valid response");
         assert_eq!(response.status, "error");
         assert_eq!(response.message, Some("boom".to_string()));
     }
@@ -567,6 +562,9 @@ mod tests {
 
     #[test]
     fn stale_response_does_not_match_newer_generation() {
-        assert!(!is_current(4, 5), "a response to an older request must not be treated as current");
+        assert!(
+            !is_current(4, 5),
+            "a response to an older request must not be treated as current"
+        );
     }
 }
