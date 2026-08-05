@@ -42,8 +42,7 @@ pub fn remove_stale_files(dir: &Path) {
     }
 }
 
-pub const MODEL_REPO_BASE: &str =
-    "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main";
+pub const MODEL_REPO_BASE: &str = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main";
 
 /// True only when every required model file is present. A partial `.part`
 /// file left over from an interrupted download does not count.
@@ -60,11 +59,7 @@ pub fn is_downloaded(dir: &Path) -> bool {
 /// "12 MB / 0 MB". Hugging Face additionally reports `X-Linked-Size` for
 /// LFS/Xet-backed files, which is the authoritative size and survives the
 /// redirect chain, so it wins when present.
-pub fn remote_file_size(
-    client: &reqwest::blocking::Client,
-    base_url: &str,
-    file: &str,
-) -> Result<u64, String> {
+pub fn remote_file_size(client: &reqwest::blocking::Client, base_url: &str, file: &str) -> Result<u64, String> {
     let url = format!("{base_url}/{file}");
     let response = client
         .head(&url)
@@ -106,9 +101,7 @@ pub fn download_one_file(
     if existing > 0 {
         request = request.header("Range", format!("bytes={existing}-"));
     }
-    let response = request
-        .send()
-        .map_err(|e| format!("{file}: request failed: {e}"))?;
+    let response = request.send().map_err(|e| format!("{file}: request failed: {e}"))?;
     if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
         // A full-size `.part` file left over from a process that died
         // between the final `write_all` and the rename to `final_path`
@@ -142,9 +135,7 @@ pub fn download_one_file(
     let mut reader = response;
     let mut buf = [0u8; 64 * 1024];
     loop {
-        let n = reader
-            .read(&mut buf)
-            .map_err(|e| format!("{file}: read failed: {e}"))?;
+        let n = reader.read(&mut buf).map_err(|e| format!("{file}: read failed: {e}"))?;
         if n == 0 {
             break;
         }
@@ -226,18 +217,24 @@ pub fn spawn_download(app: tauri::AppHandle, on_success: impl FnOnce() + Send + 
                 let app_for_progress = app.clone();
                 let base = overall_base;
                 let file_name = file.to_string();
-                download_one_file(&client, MODEL_REPO_BASE, &dir, file, move |file_downloaded, file_total| {
-                    let _ = app_for_progress.emit(
-                        "model-download-progress",
-                        DownloadProgress {
-                            file: file_name.clone(),
-                            file_bytes_downloaded: file_downloaded,
-                            file_bytes_total: file_total,
-                            overall_bytes_downloaded: base + file_downloaded,
-                            overall_bytes_total: overall_total,
-                        },
-                    );
-                })?;
+                download_one_file(
+                    &client,
+                    MODEL_REPO_BASE,
+                    &dir,
+                    file,
+                    move |file_downloaded, file_total| {
+                        let _ = app_for_progress.emit(
+                            "model-download-progress",
+                            DownloadProgress {
+                                file: file_name.clone(),
+                                file_bytes_downloaded: file_downloaded,
+                                file_bytes_total: file_total,
+                                overall_bytes_downloaded: base + file_downloaded,
+                                overall_bytes_total: overall_total,
+                            },
+                        );
+                    },
+                )?;
                 overall_base += file_totals[i];
             }
             Ok(())
@@ -326,8 +323,7 @@ mod tests {
             .create();
 
         let client = reqwest::blocking::Client::new();
-        download_one_file(&client, &server.url(), &dir, "vocab.txt", |_, _| {})
-            .expect("resumed download succeeds");
+        download_one_file(&client, &server.url(), &dir, "vocab.txt", |_, _| {}).expect("resumed download succeeds");
 
         assert_eq!(std::fs::read(dir.join("vocab.txt")).unwrap(), full);
     }
@@ -381,8 +377,7 @@ mod tests {
             .create();
 
         let client = reqwest::blocking::Client::new();
-        let size = remote_file_size(&client, &server.url(), "encoder-model.onnx")
-            .expect("size probe succeeds");
+        let size = remote_file_size(&client, &server.url(), "encoder-model.onnx").expect("size probe succeeds");
 
         // reqwest's `Response::content_length()` would report 0 here (a HEAD
         // reply carries no body), which is what made the UI show "/ 0 MB".
@@ -402,8 +397,7 @@ mod tests {
             .create();
 
         let client = reqwest::blocking::Client::new();
-        let size = remote_file_size(&client, &server.url(), "decoder_joint-model.onnx")
-            .expect("size probe succeeds");
+        let size = remote_file_size(&client, &server.url(), "decoder_joint-model.onnx").expect("size probe succeeds");
 
         assert_eq!(size, 12_345_678);
     }

@@ -105,18 +105,16 @@ pub fn spawn_setup(app: tauri::AppHandle) {
                 .map(|(_, name)| name)
                 .ok_or("malformed python build standalone URL")?;
             let total = crate::model_download::remote_file_size(&client, base_url, file_name)?;
-            crate::model_download::download_one_file(
-                &client,
-                base_url,
-                &env_dir,
-                file_name,
-                |downloaded, _| {
-                    let _ = app.emit(
-                        "tts-setup-progress",
-                        SetupProgress { stage: "python".to_string(), bytes_downloaded: downloaded, bytes_total: total },
-                    );
-                },
-            )?;
+            crate::model_download::download_one_file(&client, base_url, &env_dir, file_name, |downloaded, _| {
+                let _ = app.emit(
+                    "tts-setup-progress",
+                    SetupProgress {
+                        stage: "python".to_string(),
+                        bytes_downloaded: downloaded,
+                        bytes_total: total,
+                    },
+                );
+            })?;
             // The archive's own root already contains `python/...` (verified
             // by downloading and inspecting the real asset), so unpack into
             // `env_dir` (python_dir's parent), NOT into `python_dir` itself —
@@ -130,7 +128,11 @@ pub fn spawn_setup(app: tauri::AppHandle) {
             let python_exe = python_dir.join("python.exe");
             let _ = app.emit(
                 "tts-setup-progress",
-                SetupProgress { stage: "packages".to_string(), bytes_downloaded: 0, bytes_total: 0 },
+                SetupProgress {
+                    stage: "packages".to_string(),
+                    bytes_downloaded: 0,
+                    bytes_total: 0,
+                },
             );
             // torch itself isn't pinned tightly: the CPU wheel index only
             // ever serves torch builds compatible with this Python version,
@@ -155,7 +157,11 @@ pub fn spawn_setup(app: tauri::AppHandle) {
             // first real "speak" doesn't pay the Hugging Face download cost.
             let _ = app.emit(
                 "tts-setup-progress",
-                SetupProgress { stage: "weights".to_string(), bytes_downloaded: 0, bytes_total: 0 },
+                SetupProgress {
+                    stage: "weights".to_string(),
+                    bytes_downloaded: 0,
+                    bytes_total: 0,
+                },
             );
             let scratch = tts_scratch_dir(&app)?;
             prewarm_weights(&python_exe, &sidecar_script_path(&app)?, &scratch)?;
@@ -252,7 +258,9 @@ fn prewarm_weights(python: &Path, sidecar_script: &Path, scratch_dir: &Path) -> 
     // TTS with the real cause lost.
     let mut response_line = String::new();
     let read_result = if let Some(stdout) = child.stdout.take() {
-        BufReader::new(stdout).read_line(&mut response_line).map_err(|e| e.to_string())
+        BufReader::new(stdout)
+            .read_line(&mut response_line)
+            .map_err(|e| e.to_string())
     } else {
         Err("prewarm sidecar stdout unavailable".to_string())
     };
