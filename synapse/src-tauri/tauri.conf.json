@@ -20,7 +20,7 @@
       "endpoints": [
         "https://github.com/sahil-sharma-50/Synapse/releases/latest/download/latest.json"
       ],
-      "pubkey": "REPLACE_WITH_TAURI_SIGNING_PUBLIC_KEY",
+      "pubkey": "RWR/bUw2AYkBwQRO31KpUGimN+Pxg0aUub6T0/a7Imc5LTyCxRs0G1uv",
       "windows": {
         "installMode": "passive"
       }

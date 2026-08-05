@@ -1,5 +1,31 @@
 # Synapse — Session Handoff
 
+## In-app updates: signature verification for PR #20 (2026-08-06)
+
+The #20 review flagged that the hand-rolled updater ran a downloaded `.exe`
+silently with only a byte-count integrity check, and the feed pointed at a
+fork. The owner (Sahil) resolved it on the branch with the official
+`tauri-plugin-updater`: signature verification against a pinned minisign key,
+host-pinned GitHub download, server-side release resolution (the frontend can
+no longer choose the URL), `.update-pending`/`.fresh-install` marker handling
+so upgrades don't dump users back into onboarding, and a signed `release.yml`
+plus the `update-feed` guard. I contributed the real signing key that was
+holding it back:
+
+- `tauri.conf.json` `plugins.updater.pubkey` was the placeholder
+  `REPLACE_WITH_TAURI_SIGNING_PUBLIC_KEY` (the `update-feed` guard fails on
+  that by design). It now holds the real minisign public key
+  `RWR/bUw2AYkBwQRO31KpUGimN+Pxg0aUub6T0/a7Imc5LTyCxRs0G1uv`.
+
+**Hand this to the owner (secret, never commit):** the matching secret key is
+at `C:\Users\zucky\AppData\Local\Temp\opencode\synapse-release-signing.key`.
+The owner must store it as a CI secret (release.yml expects the
+`TAURI_SIGNING_PRIVATE_KEY` the plugin's build hard-fails without) and keep it
+out of the repo. Every release is then signed with it; the updater refuses any
+installer not verified by the pinned key.
+
+---
+
 ## CI added (2026-08-05)
 
 PR checks now run on every pull request — see the CI section of `CLAUDE.md` for
