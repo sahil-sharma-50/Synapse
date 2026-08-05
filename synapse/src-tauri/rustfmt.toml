@@ -1,4 +1,10 @@
-# The existing source is written to a wider line than rustfmt's 100-column
-# default — matching it here keeps `cargo fmt --check` enforceable in CI without
-# a whole-tree reformat that would bury real diffs.
+# The existing style runs wider than rustfmt's 100-column default — notably the
+# SampleFormat match arms in asr.rs and the Tauri command signatures in lib.rs,
+# which read worse broken across lines than they do long.
+#
+# This file is referenced by the `formatting` job in .github/workflows/pr.yml as
+# `--config-path synapse/src-tauri/rustfmt.toml`. Do not remove it: rustfmt
+# silently ignores a --config-path that does not exist, falling back to defaults
+# without a warning, so a missing file shows up as spurious 100-column diffs on
+# whichever file a PR happens to touch rather than as an error.
 max_width = 120

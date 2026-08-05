@@ -28,11 +28,11 @@ window-vibrancy = "0.8"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 parakeet-rs = "0.3"
-cpal = "0.15"
+cpal = "0.17"
 enigo = "0.6"
 xcap = "0.9"
 chrono = "0.4"
-dirs = "5"
+dirs = "6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 # The platform-store feature is NOT optional: with no store feature keyring
 # silently compiles in its in-memory `mock` store, which hands out a fresh
