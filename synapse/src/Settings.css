@@ -487,8 +487,8 @@ select.set-input {
 }
 
 .set-note {
-  font-size: 12px;
-  opacity: 0.55;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
 }
 
 .set-hint {

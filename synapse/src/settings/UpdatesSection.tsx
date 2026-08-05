@@ -85,7 +85,9 @@ export default function UpdatesSection() {
     setProgress(null);
     setStatus("downloading");
     try {
-      await invoke("download_update", { url: info.download_url, size: info.file_size });
+      // No URL argument on purpose — the backend resolves the release itself
+      // rather than executing whatever this window asks it to download.
+      await invoke("download_update");
     } catch (e) {
       setStatus("available");
       setError(String(e));

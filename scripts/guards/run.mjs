@@ -15,6 +15,7 @@ import * as cssTokens from "./css-tokens.mjs";
 import * as keyringFeatures from "./keyring-features.mjs";
 import * as noSecrets from "./no-secrets-in-settings.mjs";
 import * as versionParity from "./version-parity.mjs";
+import * as updateFeed from "./update-feed.mjs";
 
 const GUARDS = [
   noteColors,
@@ -24,6 +25,7 @@ const GUARDS = [
   keyringFeatures,
   noSecrets,
   versionParity,
+  updateFeed,
 ];
 
 let failed = 0;

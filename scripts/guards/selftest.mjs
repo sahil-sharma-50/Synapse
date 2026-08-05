@@ -101,6 +101,28 @@ const CASES = [
     break: (edit) =>
       edit("synapse/src/models.ts", (s) => s.replace('version: "2.1.0"', 'version: "2.2.0"')),
   },
+  {
+    guard: "./update-feed.mjs",
+    what: "the update feed repointed at someone else's repository",
+    break: (edit) =>
+      edit("synapse/src-tauri/src/updater.rs", (s) =>
+        s.replace(
+          'pub const REPO: &str = "sahil-sharma-50/Synapse"',
+          'pub const REPO: &str = "someone-else/Synapse"',
+        ),
+      ),
+  },
+  {
+    guard: "./update-feed.mjs",
+    what: "release lookups pointed off GitHub's API",
+    break: (edit) =>
+      edit("synapse/src-tauri/src/updater.rs", (s) =>
+        s.replace(
+          'pub const API_BASE: &str = "https://api.github.com/repos"',
+          'pub const API_BASE: &str = "http://releases.example/repos"',
+        ),
+      ),
+  },
 ];
 
 let failures = 0;
@@ -115,6 +137,7 @@ for (const [i, testCase] of CASES.entries()) {
       join(ROOT, "synapse/src-tauri/Cargo.toml"),
       join(sandbox, "synapse/src-tauri/Cargo.toml"),
     );
+    cpSync(join(ROOT, "synapse/package.json"), join(sandbox, "synapse/package.json"));
 
     const edit = (rel, fn) => {
       const path = join(sandbox, rel);

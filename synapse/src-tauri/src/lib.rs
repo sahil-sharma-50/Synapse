@@ -838,12 +838,7 @@ fn download_tts_engine(app: tauri::AppHandle) {
 async fn check_for_update() -> Result<updater::UpdateInfo, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let client = reqwest::blocking::Client::new();
-        updater::check_for_update(
-            &client,
-            "https://api.github.com/repos",
-            updater::REPO,
-            env!("CARGO_PKG_VERSION"),
-        )
+        updater::check_for_update(&client, updater::API_BASE, updater::REPO, env!("CARGO_PKG_VERSION"))
     })
     .await
     .map_err(|e| format!("update check failed: {e}"))?
@@ -853,9 +848,13 @@ async fn check_for_update() -> Result<updater::UpdateInfo, String> {
 /// come back over `update-download-progress`/`update-download-done`/
 /// `update-download-error` events, not a return value — same pattern as
 /// `download_model`.
+///
+/// Deliberately takes no URL. The downloaded file gets executed by
+/// `install_update`, so the target is resolved from GitHub inside
+/// `spawn_update_download` instead of being handed in by the webview.
 #[tauri::command]
-fn download_update(app: tauri::AppHandle, url: String, size: u64) {
-    updater::spawn_update_download(app, url, size);
+fn download_update(app: tauri::AppHandle) {
+    updater::spawn_update_download(app);
 }
 
 /// Launches the downloaded installer silently (`/S`) and exits the app so the
@@ -1381,9 +1380,17 @@ pub fn run() {
             // Consume it unconditionally rather than short-circuiting behind the
             // flag, or a marker left unread during a not-yet-onboarded launch
             // would re-trigger the wizard later.
+            //
+            // The hook cannot tell an upgrade from a first install, so an
+            // in-app update drops the same marker and would send a long-time
+            // user back through first-run setup. `install_update` leaves its
+            // own marker for that case; both are consumed unconditionally so
+            // neither can linger and fire on some later launch.
             let initial_settings = settings::load(&settings_path(app.handle())?);
-            let fresh_install = take_fresh_install_marker(&app.path().app_data_dir()?);
-            let show_onboarding = fresh_install || !initial_settings.onboarding_complete;
+            let data_dir = app.path().app_data_dir()?;
+            let fresh_install = take_fresh_install_marker(&data_dir);
+            let after_update = updater::take_update_pending_marker(&data_dir);
+            let show_onboarding = (fresh_install && !after_update) || !initial_settings.onboarding_complete;
 
             let onboarding = WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Setup")
