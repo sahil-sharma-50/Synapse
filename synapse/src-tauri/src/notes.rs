@@ -162,14 +162,7 @@ pub fn update_content(app: &tauri::AppHandle, id: &str, content: String) -> Resu
     update_note(app, id, |n| n.content = content)
 }
 
-pub fn update_geometry(
-    app: &tauri::AppHandle,
-    id: &str,
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-) -> Result<(), String> {
+pub fn update_geometry(app: &tauri::AppHandle, id: &str, x: i32, y: i32, w: u32, h: u32) -> Result<(), String> {
     update_note(app, id, |n| {
         n.x = Some(x);
         n.y = Some(y);
@@ -215,7 +208,13 @@ pub fn migrate_legacy(dir: &Path) -> Result<(), String> {
     let store = dir.join("notes.json");
     let mut notes = read_store(&store);
     if !text.trim().is_empty() && !notes.iter().any(|n| n.content == text) {
-        notes.insert(0, Note { content: text, ..Default::default() });
+        notes.insert(
+            0,
+            Note {
+                content: text,
+                ..Default::default()
+            },
+        );
     }
 
     write_store(&store, &notes)?;
@@ -291,7 +290,10 @@ mod tests {
     #[test]
     fn migration_preserves_existing_notes() {
         let dir = temp_dir("migrate-existing");
-        let existing = Note { content: "already here".into(), ..Default::default() };
+        let existing = Note {
+            content: "already here".into(),
+            ..Default::default()
+        };
         write_store(&dir.join("notes.json"), std::slice::from_ref(&existing)).expect("seed store");
         std::fs::write(dir.join("notepad.txt"), "from the old notepad").expect("write legacy");
 
@@ -305,7 +307,10 @@ mod tests {
 
     #[test]
     fn title_uses_the_first_non_empty_line() {
-        let note = Note { content: "\n\n  Real title  \nbody".into(), ..Default::default() };
+        let note = Note {
+            content: "\n\n  Real title  \nbody".into(),
+            ..Default::default()
+        };
         assert_eq!(note.title(), "Real title");
     }
 
@@ -316,7 +321,10 @@ mod tests {
 
     #[test]
     fn title_is_truncated_with_an_ellipsis() {
-        let note = Note { content: "x".repeat(60), ..Default::default() };
+        let note = Note {
+            content: "x".repeat(60),
+            ..Default::default()
+        };
         let title = note.title();
         assert_eq!(title.chars().count(), 41, "40 chars plus the ellipsis");
         assert!(title.ends_with('…'));
@@ -328,8 +336,7 @@ mod tests {
     fn store_tolerates_missing_and_unknown_fields() {
         let dir = temp_dir("compat");
         let path = dir.join("notes.json");
-        std::fs::write(&path, r#"[{"id":"abc","content":"hi","sparkles":true}]"#)
-            .expect("write partial store");
+        std::fs::write(&path, r#"[{"id":"abc","content":"hi","sparkles":true}]"#).expect("write partial store");
 
         let notes = read_store(&path);
         assert_eq!(notes.len(), 1);
@@ -368,9 +375,6 @@ mod tests {
     fn read_from_errors_on_a_missing_file_instead_of_returning_empty() {
         let path = temp_dir("missing").join("nope.txt");
         let err = read_from(path.to_str().unwrap()).unwrap_err();
-        assert!(
-            err.contains("nope.txt"),
-            "error should name the path: {err}"
-        );
+        assert!(err.contains("nope.txt"), "error should name the path: {err}");
     }
 }

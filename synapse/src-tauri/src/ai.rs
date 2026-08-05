@@ -40,9 +40,7 @@ fn entry(provider: Provider) -> Result<Entry, String> {
 /// doesn't persist (see the keyring note in Cargo.toml) reports success and
 /// leaves the panel permanently stuck on "No key" with nothing to explain it.
 pub fn set_api_key(provider: Provider, key: &str) -> Result<(), String> {
-    entry(provider)?
-        .set_password(key)
-        .map_err(|e| e.to_string())?;
+    entry(provider)?.set_password(key).map_err(|e| e.to_string())?;
 
     match entry(provider)?.get_password() {
         Ok(stored) if stored == key => Ok(()),

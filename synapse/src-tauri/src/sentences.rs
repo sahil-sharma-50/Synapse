@@ -18,10 +18,10 @@ const MAX_CHARS: usize = 320;
 
 /// Words that end in a period without ending a sentence.
 const ABBREVIATIONS: &[&str] = &[
-    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc", "eg", "ie", "cf", "al",
-    "approx", "dept", "est", "fig", "no", "vol", "inc", "ltd", "co", "corp", "univ", "jan", "feb",
-    "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "mon", "tue", "tues",
-    "wed", "thu", "thur", "thurs", "fri", "sat", "sun", "am", "pm",
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc", "eg", "ie", "cf", "al", "approx", "dept",
+    "est", "fig", "no", "vol", "inc", "ltd", "co", "corp", "univ", "jan", "feb", "mar", "apr", "jun", "jul", "aug",
+    "sep", "sept", "oct", "nov", "dec", "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun", "am",
+    "pm",
 ];
 
 const TERMINATORS: [char; 4] = ['.', '!', '?', '…'];
@@ -42,7 +42,10 @@ impl Default for SentenceSplitter {
 
 impl SentenceSplitter {
     pub fn new() -> Self {
-        Self { buf: String::new(), in_code: false }
+        Self {
+            buf: String::new(),
+            in_code: false,
+        }
     }
 
     /// Appends a delta and returns every complete chunk it now contains.
@@ -272,14 +275,9 @@ mod tests {
 
     #[test]
     fn splits_on_a_period_followed_by_space() {
-        let chunks = split_all(
-            "The quick brown fox jumped over the lazy dog today. And then it ran away home.",
-        );
+        let chunks = split_all("The quick brown fox jumped over the lazy dog today. And then it ran away home.");
         assert_eq!(chunks.len(), 2);
-        assert_eq!(
-            chunks[0],
-            "The quick brown fox jumped over the lazy dog today."
-        );
+        assert_eq!(chunks[0], "The quick brown fox jumped over the lazy dog today.");
         assert_eq!(chunks[1], "And then it ran away home.");
     }
 
@@ -293,7 +291,10 @@ mod tests {
                 .is_empty(),
             "no trailing whitespace yet, so the boundary is not yet proven"
         );
-        assert_eq!(s.push(" Next one."), vec!["Here is a sentence of respectable length that ends here."]);
+        assert_eq!(
+            s.push(" Next one."),
+            vec!["Here is a sentence of respectable length that ends here."]
+        );
     }
 
     #[test]
@@ -312,8 +313,7 @@ mod tests {
 
     #[test]
     fn does_not_split_after_a_common_abbreviation() {
-        let chunks =
-            split_all("Please ask Dr. Smith about the samples, e.g. the ones from the fridge.");
+        let chunks = split_all("Please ask Dr. Smith about the samples, e.g. the ones from the fridge.");
         assert_eq!(chunks.len(), 1, "got {chunks:?}");
     }
 
@@ -384,17 +384,13 @@ mod tests {
 
     #[test]
     fn question_and_exclamation_marks_end_sentences() {
-        let chunks = split_all(
-            "Did you remember to feed the cat this morning? I really hope that you did!",
-        );
+        let chunks = split_all("Did you remember to feed the cat this morning? I really hope that you did!");
         assert_eq!(chunks.len(), 2, "got {chunks:?}");
     }
 
     #[test]
     fn a_closing_quote_after_the_terminator_stays_with_its_sentence() {
-        let chunks = split_all(
-            "She turned around and said \"that is quite enough of that.\" Then she left the room.",
-        );
+        let chunks = split_all("She turned around and said \"that is quite enough of that.\" Then she left the room.");
         assert_eq!(chunks.len(), 2, "got {chunks:?}");
         assert!(chunks[0].ends_with('"'), "got {:?}", chunks[0]);
     }

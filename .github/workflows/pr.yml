@@ -80,9 +80,10 @@ jobs:
       - name: Unit tests
         run: cargo test --lib
 
-  # Formatting is a ratchet, not a wall: the tree predates both formatters, so
-  # only the files a PR actually touches have to come out clean. Run
-  # `npm run format` / `cargo fmt` on your own changes to satisfy this.
+  # Prettier is still a ratchet, not a wall: the frontend predates it, so only
+  # the files a PR actually touches have to come out clean — run
+  # `npm run format` on your own changes. Rust is a wall now: the whole crate
+  # is rustfmt-clean, so `cargo fmt` before you push.
   formatting:
     name: Formatting (changed files)
     runs-on: ubuntu-latest
@@ -121,11 +122,14 @@ jobs:
           # from the repo root, which is where this step runs.
           ./synapse/node_modules/.bin/prettier --check --ignore-unknown "${files[@]}"
 
+      # Rust is no longer a ratchet: the tree is fully rustfmt-clean, so this
+      # checks all of it. A per-file `rustfmt --check` cannot work here —
+      # rustfmt follows `mod` declarations, so handing it lib.rs drags in
+      # every module in the crate and the "changed files only" scoping is a
+      # fiction. Stable rustfmt has no --skip-children to opt out of that.
       - name: rustfmt
-        run: |
-          mapfile -t files < <(grep -E '\.rs$' changed.txt || true)
-          if [ ${#files[@]} -eq 0 ]; then echo "no Rust files changed"; exit 0; fi
-          rustfmt --check --edition 2021 --config-path synapse/src-tauri/rustfmt.toml "${files[@]}"
+        run: cargo fmt --check
+        working-directory: synapse/src-tauri
 
   audit:
     name: cargo audit

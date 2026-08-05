@@ -93,7 +93,9 @@ pub fn paste_text(app: &tauri::AppHandle, text: &str) -> Result<(), String> {
     let modifier = Key::Control;
 
     enigo.key(modifier, Direction::Press).map_err(|e| format!("{e:?}"))?;
-    enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| format!("{e:?}"))?;
+    enigo
+        .key(Key::Unicode('v'), Direction::Click)
+        .map_err(|e| format!("{e:?}"))?;
     enigo.key(modifier, Direction::Release).map_err(|e| format!("{e:?}"))?;
 
     std::thread::sleep(std::time::Duration::from_millis(80));
@@ -133,7 +135,9 @@ pub fn copy_selection(app: &tauri::AppHandle) -> Result<Option<String>, String> 
     let modifier = Key::Control;
 
     enigo.key(modifier, Direction::Press).map_err(|e| format!("{e:?}"))?;
-    enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
+    enigo
+        .key(Key::Unicode('c'), Direction::Click)
+        .map_err(|e| format!("{e:?}"))?;
     enigo.key(modifier, Direction::Release).map_err(|e| format!("{e:?}"))?;
 
     std::thread::sleep(std::time::Duration::from_millis(80));
