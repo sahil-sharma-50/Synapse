@@ -39,7 +39,7 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 # empty credential per `Entry::new` — so saving an API key appears to succeed
 # and reading it back always returns NoEntry. Features are per-target below.
 keyring = "3"
-rodio = "0.19"
+rodio = "0.22"
 flate2 = "1"
 tar = "0.4"
 
