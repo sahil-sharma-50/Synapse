@@ -1,0 +1,4 @@
+# The existing source is written to a wider line than rustfmt's 100-column
+# default — matching it here keeps `cargo fmt --check` enforceable in CI without
+# a whole-tree reformat that would bury real diffs.
+max_width = 120

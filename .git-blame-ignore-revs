@@ -1,0 +1,9 @@
+# Commits that only moved whitespace around. `git blame` skips these so the
+# line-by-line history still points at whoever wrote the code, not at whoever
+# ran the formatter.
+#
+# Enable it once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file automatically, no config needed.)
+#
+# Add the full 40-char SHA of any pure-formatting commit below, newest last.

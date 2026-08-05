@@ -1,0 +1,66 @@
+version: 2
+
+# Tuned for volume, not just correctness. The first run of the previous config
+# opened twelve PRs at once — twelve notification threads for what was really
+# three decisions. Two rules keep that from happening again:
+#
+#   1. Monthly, not weekly. Nothing here is urgent enough to need a seven-day
+#      cadence; Dependabot security alerts are a separate channel and are not
+#      throttled by this file.
+#   2. One grouped PR per ecosystem for minor and patch bumps. Majors stay
+#      individual, so a breaking bump cannot hold the safe ones hostage — the
+#      rodio 0.19 -> 0.22 case, which needs a real port of tts_pocket.rs.
+
+updates:
+  - package-ecosystem: npm
+    directory: /synapse
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: /synapse/src-tauri
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      cargo:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # parakeet-rs pins a specific `ort` build; bumping either independently has
+      # broken the ONNX runtime link before. Update these two deliberately.
+      # It is 0.3, so minor is the breaking axis here — a major-only ignore on a
+      # 0.x crate never fires, which is what this rule used to say.
+      - dependency-name: parakeet-rs
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # rodio 0.20 removed OutputStream::try_default/OutputStreamHandle and
+      # reshaped Sink construction. tts_pocket.rs depends on all of it, plus
+      # Sink::new_idle keeping the device open so a later append resumes
+      # gaplessly. That is a port with a listening test, not a bump — see #13.
+      # Minor is listed too: rodio is 0.x, so 0.19 -> 0.22 is a *minor* bump by
+      # semver, and a major-only ignore would sail straight past it.
+      - dependency-name: rodio
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

@@ -1,0 +1,18 @@
+dist
+node_modules
+package-lock.json
+synapse/src-tauri/target
+synapse/src-tauri/gen
+
+# Vendored agent skills — third-party trees, not this project's source.
+.agents/
+.claude/
+.codex/
+skills-lock.json
+**/.impeccable/
+
+# Downloaded ML model metadata, not hand-written.
+**/model/config.json
+
+# Rust is formatted by rustfmt, not Prettier.
+*.rs

@@ -1,7 +1,14 @@
+@import "./theme.css";
+
+/* Onboarding kept a private palette (`#edeef2` ink, its own accent) and its own
+   font stack, so first-run looked like a different app from the one it was
+   introducing. The `--ob-*` names survive as aliases — every value now comes
+   from the shared system, and the gradient shell below stays as a surface
+   treatment rather than a private theme. */
 :root {
-  --ob-accent: #5aaaff;
-  --ob-text: #edeef2;
-  --ob-muted: rgba(237, 238, 242, 0.58);
+  --ob-accent: var(--sy-accent-solid);
+  --ob-text: var(--sy-text);
+  --ob-muted: var(--sy-text-dim);
 }
 
 .ob-root {
@@ -9,11 +16,10 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  box-sizing: border-box;
   color: var(--ob-text);
-  font-family: "Segoe UI Variable Display", "Segoe UI", -apple-system, sans-serif;
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-family: var(--sy-font-display);
+  font-size: var(--sy-fs-base);
+  line-height: var(--sy-lh-body);
   background:
     radial-gradient(120% 80% at 50% -10%, rgba(90, 170, 255, 0.16), transparent 60%),
     radial-gradient(90% 60% at 110% 105%, rgba(150, 110, 255, 0.12), transparent 65%),

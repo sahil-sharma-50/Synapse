@@ -12,10 +12,28 @@ use std::time::{Duration, Instant};
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 
 const SILENCE_TIMEOUT_MS: u64 = 900;
-const MAX_RECORD_MS: u128 = 20_000;
-/// If the user never speaks, don't hang for the full MAX_RECORD_MS.
+
+/// A runaway guard, not a UX mechanism. Dictation ends when the user ends it;
+/// this only exists so a forgotten recording can't grow without bound. At
+/// 16 kHz mono f32 the buffer costs ~64 KB/s, so five minutes is ~19 MB.
+const MAX_RECORD_MS: u128 = 300_000;
+
+/// Only consulted in auto-stop mode. With manual stop the user can see the
+/// level meter sitting flat and decide for themselves, so bailing out from
+/// under them would be worse than waiting.
 const NO_SPEECH_TIMEOUT_MS: u128 = 6_000;
+
 const SILENCE_RMS_THRESHOLD: f32 = 0.015;
+
+/// One sample of recording state, handed to the caller ~20x/second so it can
+/// drive a live meter. `asr.rs` deliberately knows nothing about Tauri, so the
+/// caller owns turning these into events.
+pub struct Tick {
+    /// Envelope-smoothed RMS, roughly 0.0..0.3 for normal speech.
+    pub level: f32,
+    pub elapsed_ms: u64,
+    pub heard_speech: bool,
+}
 
 static MODEL: OnceLock<Mutex<ParakeetTDT>> = OnceLock::new();
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -48,6 +66,14 @@ pub fn preload_model(model_dir: std::path::PathBuf) {
 struct SilenceState {
     heard_speech: bool,
     silence_since: Option<Instant>,
+    /// Latest smoothed input level, read by the polling loop for the meter.
+    level: f32,
+}
+
+impl SilenceState {
+    fn new() -> Self {
+        Self { heard_speech: false, silence_since: None, level: 0.0 }
+    }
 }
 
 fn rms(samples: &[f32]) -> f32 {
@@ -95,6 +121,7 @@ fn build_stream<T>(
     buffer: Arc<Mutex<Vec<f32>>>,
     state: Arc<Mutex<SilenceState>>,
     done: Arc<AtomicBool>,
+    auto_stop: bool,
 ) -> Result<cpal::Stream, String>
 where
     T: cpal::SizedSample,
@@ -107,12 +134,29 @@ where
                 let samples: Vec<f32> = data.iter().map(|s| f32::from_sample(*s)).collect();
                 buffer.lock().unwrap().extend_from_slice(&samples);
 
+                let level = rms(&samples);
                 let mut st = state.lock().unwrap();
-                if rms(&samples) > SILENCE_RMS_THRESHOLD {
+
+                // Fast attack, slow release. A raw per-callback RMS makes the
+                // meter strobe; this makes it read like a physical needle
+                // without lagging the start of a word.
+                st.level = if level > st.level {
+                    level
+                } else {
+                    st.level * 0.75 + level * 0.25
+                };
+
+                if level > SILENCE_RMS_THRESHOLD {
                     st.heard_speech = true;
                     st.silence_since = None;
                 } else if st.heard_speech && st.silence_since.is_none() {
                     st.silence_since = Some(Instant::now());
+                }
+
+                // The level tracking above runs unconditionally because it
+                // feeds the meter; only the *stop* is opt-in.
+                if !auto_stop {
+                    return;
                 }
                 if let Some(since) = st.silence_since {
                     if since.elapsed().as_millis() as u64 >= SILENCE_TIMEOUT_MS {
@@ -126,10 +170,16 @@ where
         .map_err(|e| e.to_string())
 }
 
-/// Records from the default microphone until trailing silence, a manual stop,
-/// or a timeout, then transcribes. Blocking — call from a background thread,
-/// never the UI/event-loop thread.
-pub fn record_and_transcribe() -> Result<String, String> {
+/// Records from the default microphone until the user stops it (or, when
+/// `auto_stop` is on, until trailing silence), then transcribes. Blocking —
+/// call from a background thread, never the UI/event-loop thread.
+///
+/// `on_tick` is called roughly every 50 ms with the live input level so the
+/// caller can drive a meter. It must not block.
+pub fn record_and_transcribe(
+    auto_stop: bool,
+    mut on_tick: impl FnMut(Tick),
+) -> Result<String, String> {
     STOP.store(false, Ordering::SeqCst);
 
     let host = cpal::default_host();
@@ -148,18 +198,15 @@ pub fn record_and_transcribe() -> Result<String, String> {
 
     let buffer = Arc::new(Mutex::new(Vec::<f32>::new()));
     let done = Arc::new(AtomicBool::new(false));
-    let state = Arc::new(Mutex::new(SilenceState {
-        heard_speech: false,
-        silence_since: None,
-    }));
+    let state = Arc::new(Mutex::new(SilenceState::new()));
 
     let stream = match sample_format {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
         other => Err(format!("unsupported microphone sample format: {other:?}")),
     }?;
 
@@ -174,10 +221,22 @@ pub fn record_and_transcribe() -> Result<String, String> {
         if elapsed >= MAX_RECORD_MS {
             break;
         }
-        if elapsed >= NO_SPEECH_TIMEOUT_MS && !state.lock().unwrap().heard_speech {
+
+        let (level, heard_speech) = {
+            let st = state.lock().unwrap();
+            (st.level, st.heard_speech)
+        };
+
+        // In auto-stop mode a silent room means the wrong device is selected
+        // and nothing will ever end the recording, so bail. In manual mode the
+        // user is watching a flat meter and can stop it themselves — taking the
+        // decision away from them mid-thought is the behaviour we just removed.
+        if auto_stop && elapsed >= NO_SPEECH_TIMEOUT_MS && !heard_speech {
             drop(stream);
             return Err("no speech detected - is the right microphone selected?".into());
         }
+
+        on_tick(Tick { level, elapsed_ms: elapsed as u64, heard_speech });
         std::thread::sleep(Duration::from_millis(50));
     }
     drop(stream);
@@ -219,18 +278,15 @@ pub fn check_mic_access() -> Result<(), String> {
 
     let buffer = Arc::new(Mutex::new(Vec::<f32>::new()));
     let done = Arc::new(AtomicBool::new(false));
-    let state = Arc::new(Mutex::new(SilenceState {
-        heard_speech: false,
-        silence_since: None,
-    }));
+    let state = Arc::new(Mutex::new(SilenceState::new()));
 
     let stream = match sample_format {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
-        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone()),
+        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
         other => Err(format!("unsupported microphone sample format: {other:?}")),
     }?;
 

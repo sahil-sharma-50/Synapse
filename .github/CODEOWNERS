@@ -1,0 +1,11 @@
+# Review is required from these owners for matching paths, once branch
+# protection has "Require review from Code Owners" enabled.
+
+*                               @sahil-sharma-50
+
+# The invariants below are the ones that fail silently rather than loudly —
+# worth a deliberate look even on a small diff.
+/scripts/guards/                @sahil-sharma-50
+/.github/                       @sahil-sharma-50
+/synapse/src-tauri/capabilities/ @sahil-sharma-50
+/synapse/src/theme.css          @sahil-sharma-50

@@ -1,106 +1,393 @@
-.ai-root {
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
+@import "./theme.css";
+
+/* The AI surface. Not a chat client — an object you talk to.
+ *
+ * The orb is the interface: it is the only large element, it is the only thing
+ * that moves, and every state of the conversation is legible from it across the
+ * room. The transcript sits below it, quiet and secondary, because it exists to
+ * be *checked*, not read. That ordering is the whole design; if the transcript
+ * ever starts competing for attention, this has drifted back into being a chat
+ * window with a logo on it. */
+
+.orb-root {
   display: flex;
   flex-direction: column;
-  background: #1a1a1c;
-  color: #eaeaea;
-  font-family: -apple-system, "Segoe UI", sans-serif;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--sy-r-xl);
+  color: var(--sy-text);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  /* A deep field rather than a flat panel, so the orb reads as lit *in* a
+     space. The two radial pools are the light it casts. */
+  background:
+    radial-gradient(90% 55% at 50% 22%, rgba(90, 170, 255, 0.14), transparent 62%),
+    radial-gradient(80% 50% at 90% 100%, rgba(150, 110, 255, 0.1), transparent 65%),
+    #121216;
 }
 
-.ai-provider-row {
+/* ---- Title bar (the window is undecorated) ---- */
+
+.orb-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: var(--sy-3);
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 var(--sy-3) 0 var(--sy-5);
 }
 
-.ai-config {
+.orb-model {
   flex: 1;
-  font-size: 12px;
-  opacity: 0.6;
+  min-width: 0;
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.ai-settings-link {
-  display: block;
-  margin-top: 8px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(90, 170, 255, 0.4);
-  background: rgba(90, 170, 255, 0.14);
-  color: #eaeaea;
-  font-size: 12px;
+.orb-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sy-2);
+  height: 26px;
+  min-width: 26px;
+  padding: 0 var(--sy-3);
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--sy-text-faint);
+  font-family: inherit;
+  font-size: var(--sy-fs-xs);
   cursor: pointer;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
 }
 
-.ai-response-area {
+.orb-bar-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.orb-bar-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sy-text);
+}
+
+.orb-bar-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---- The orb ---- */
+
+.orb-stage {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sy-5);
+  padding: var(--sy-6) var(--sy-6) var(--sy-7);
+}
+
+.orb {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  /* Scale is driven inline from the live mic level while listening, so this
+     transition has to be short enough to track a voice. */
+  transition: transform 90ms var(--sy-ease-out);
+}
+
+.orb:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.orb-core {
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  /* Off-centre highlight: this is a sphere with a light source, not a circle. */
+  background: radial-gradient(
+    circle at 34% 30%,
+    #cfe6ff 0%,
+    var(--sy-accent-solid) 42%,
+    #2f6fd0 78%,
+    #1b3f7d 100%
+  );
+  box-shadow: 0 8px 26px rgba(40, 120, 230, 0.45);
+  transition: background var(--sy-dur-slow) var(--sy-ease-out),
+    box-shadow var(--sy-dur-slow) var(--sy-ease-out);
+}
+
+.orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--sy-accent-line);
+  opacity: 0;
+}
+
+.orb-ring-2 {
+  inset: 13px;
+}
+
+/* Idle: a slow breath, from an already-visible resting state. The orb is
+   awake and waiting, not animating for its own sake. */
+.orb-idle .orb-core {
+  animation: orb-breathe 4.5s var(--sy-ease-in-out) infinite;
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.88;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+/* Listening: rings push outward like something being drawn in. The core
+   itself is scaled by the real microphone level, inline. */
+.orb-listening .orb-ring {
+  animation: orb-listen 1.8s var(--sy-ease-out) infinite;
+}
+
+.orb-listening .orb-ring-2 {
+  animation-delay: 0.6s;
+}
+
+@keyframes orb-listen {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+/* Thinking: the light drains toward violet and pulses faster — visibly a
+   different activity from listening, not just a faster version of it. */
+.orb-thinking .orb-core {
+  background: radial-gradient(
+    circle at 34% 30%,
+    #e2d4ff 0%,
+    #9d7bff 44%,
+    #5c3fbf 80%,
+    #2d1f63 100%
+  );
+  box-shadow: 0 8px 26px rgba(130, 90, 240, 0.45);
+  animation: orb-think 1.15s var(--sy-ease-in-out) infinite;
+}
+
+@keyframes orb-think {
+  0%,
+  100% {
+    transform: scale(0.94);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+/* Speaking: warm, pulsing at roughly the cadence of speech. */
+.orb-speaking .orb-core {
+  background: radial-gradient(
+    circle at 34% 30%,
+    #fff0d4 0%,
+    #ffc46b 44%,
+    #e08b2c 78%,
+    #7a4610 100%
+  );
+  box-shadow: 0 8px 30px rgba(240, 170, 70, 0.5);
+  animation: orb-speak 0.7s var(--sy-ease-in-out) infinite;
+}
+
+.orb-speaking .orb-ring {
+  border-color: rgba(255, 190, 110, 0.5);
+  animation: orb-listen 1.4s var(--sy-ease-out) infinite;
+}
+
+@keyframes orb-speak {
+  0%,
+  100% {
+    transform: scale(0.97);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.orb-hint {
+  margin: 0;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
+  text-align: center;
+}
+
+/* ---- Transcript ----
+   Deliberately quiet: no bubbles, no avatars, no timestamps. Your own words
+   are dimmed, because you already know what you said. */
+
+.orb-transcript {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 14px;
-  font-size: 13px;
-  line-height: 1.5;
+  padding: 0 var(--sy-7) var(--sy-5);
+  /* Fades in under the orb rather than butting against it with a hard rule. */
+  mask-image: linear-gradient(to bottom, transparent, #000 20px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px);
+}
+
+.orb-turn {
+  margin: 0 0 var(--sy-5);
+  line-height: var(--sy-lh-body);
+  /* Comfortable measure for reading back a spoken answer. */
+  max-width: 62ch;
+}
+
+.orb-turn-you {
+  color: var(--sy-text-faint);
+  font-size: var(--sy-fs-sm);
+}
+
+.orb-turn-you::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: var(--sy-3);
+  vertical-align: middle;
+  background: currentColor;
+}
+
+.orb-turn-ai {
+  color: var(--sy-text);
   white-space: pre-wrap;
 }
 
-.ai-empty {
-  opacity: 0.45;
-  font-size: 12px;
+.orb-empty {
+  padding: var(--sy-4) 0;
+  text-align: center;
 }
 
-.ai-error {
-  color: #ff8a8a;
-  font-size: 12px;
+.orb-empty-body {
+  margin: 0 auto var(--sy-4);
+  max-width: 42ch;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
+  line-height: var(--sy-lh-body);
 }
 
-.ai-insert-btn {
-  margin: 0 12px 10px;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(90, 170, 255, 0.4);
-  background: rgba(90, 170, 255, 0.14);
-  color: #eaeaea;
-  font-size: 12px;
-  cursor: pointer;
+.orb-error {
+  margin-bottom: var(--sy-5);
+  padding: var(--sy-4) var(--sy-5);
+  border-radius: var(--sy-r-md);
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+  font-size: var(--sy-fs-sm);
+  line-height: var(--sy-lh-body);
 }
 
-.ai-input-row {
+/* ---- Footer ---- */
+
+.orb-foot {
+  flex-shrink: 0;
   display: flex;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sy-4);
+  padding: var(--sy-4) var(--sy-6) var(--sy-5);
 }
 
-.ai-input {
-  flex: 1;
-  resize: none;
-  height: 42px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: #eaeaea;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-}
-
-.ai-send-btn {
-  padding: 0 16px;
-  border-radius: 6px;
+.orb-link {
+  padding: var(--sy-2) var(--sy-3);
   border: none;
-  background: rgba(90, 170, 255, 0.85);
-  color: #0a0a0c;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--sy-text-faint);
+  font-family: inherit;
+  font-size: var(--sy-fs-xs);
   cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--sy-dur-fast) var(--sy-ease-out),
+    background var(--sy-dur-fast) var(--sy-ease-out);
 }
 
-.ai-send-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+.orb-link:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sy-text);
+}
+
+.orb-link:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.orb-composer {
+  flex: 1;
+}
+
+.orb-input {
+  width: 100%;
+  height: 62px;
+  resize: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sy-border-strong);
+  border-radius: var(--sy-r-md);
+  padding: var(--sy-4);
+  color: var(--sy-text);
+  font-family: inherit;
+  font-size: var(--sy-fs-base);
+  line-height: var(--sy-lh-body);
+  outline: none;
+  transition: border-color var(--sy-dur-fast) var(--sy-ease-out),
+    box-shadow var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.orb-input::placeholder {
+  color: var(--sy-text-faint);
+}
+
+.orb-input:focus {
+  border-color: var(--sy-accent-solid);
+  box-shadow: 0 0 0 3px var(--sy-accent-bg);
+}
+
+/* A short window shouldn't let the orb crowd out the answer entirely. */
+@media (max-height: 480px) {
+  .orb {
+    width: 92px;
+    height: 92px;
+  }
+
+  .orb-core {
+    inset: 18px;
+  }
+
+  .orb-ring-2 {
+    inset: 9px;
+  }
+
+  .orb-stage {
+    padding: var(--sy-4) var(--sy-5) var(--sy-5);
+  }
 }

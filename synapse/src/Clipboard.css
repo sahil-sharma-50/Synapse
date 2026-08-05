@@ -1,0 +1,260 @@
+@import "./theme.css";
+
+/* Clipboard picker — an Operate surface, and the most keyboard-driven one in
+   the app: it opens over whatever the user was typing in, and the whole point
+   is to get back there with the right text in under a second. Rows are dense
+   and scannable; nothing decorative competes with the text itself. */
+
+.clip-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--sy-bg);
+  color: var(--sy-text);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  overflow: hidden;
+}
+
+/* ---- Search ---- */
+
+.clip-head {
+  flex-shrink: 0;
+  padding: var(--sy-5) var(--sy-5) var(--sy-4);
+  border-bottom: 1px solid var(--sy-border);
+}
+
+.clip-search {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sy-border-strong);
+  border-radius: var(--sy-r-md);
+  padding: var(--sy-4) var(--sy-5);
+  color: var(--sy-text);
+  font: inherit;
+  outline: none;
+  transition: border-color var(--sy-dur-fast) var(--sy-ease-out),
+    box-shadow var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.clip-search::placeholder {
+  color: var(--sy-text-faint);
+}
+
+.clip-search:focus {
+  border-color: var(--sy-accent-solid);
+  box-shadow: 0 0 0 3px var(--sy-accent-bg);
+}
+
+/* ---- List ---- */
+
+.clip-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sy-3) var(--sy-3) var(--sy-4);
+}
+
+.clip-group {
+  padding: var(--sy-5) var(--sy-3) var(--sy-3);
+  font-size: var(--sy-fs-micro);
+  font-weight: var(--sy-fw-semi);
+  letter-spacing: var(--sy-track-wide);
+  text-transform: uppercase;
+  color: var(--sy-text-faint);
+}
+
+.clip-group:first-child {
+  padding-top: var(--sy-2);
+}
+
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+  padding: var(--sy-4) var(--sy-4);
+  border-radius: var(--sy-r-md);
+  cursor: pointer;
+  /* Elevation declared once: a background shift, no border and no shadow, so a
+     dense list doesn't turn into a stack of ghost cards. */
+  background: transparent;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.clip-row-selected {
+  background: var(--sy-accent-bg);
+}
+
+.clip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.clip-name {
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+  color: var(--sy-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip-preview {
+  font-size: var(--sy-fs-base);
+  color: var(--sy-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip-meta {
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
+}
+
+/* Row actions stay out of the way until the row is the one in play — a delete
+   button visible on all 500 rows is noise, and worse, an invitation to misclick. */
+.clip-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-1);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.clip-row-selected .clip-actions,
+.clip-row:focus-within .clip-actions {
+  opacity: 1;
+}
+
+/* A pinned row keeps its pin visible even unselected, otherwise the only way
+   to tell pinned from recent is the group header scrolled off above. */
+.clip-actions:has(.clip-icon-btn-on) {
+  opacity: 1;
+}
+
+.clip-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--sy-text-faint);
+  cursor: pointer;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.clip-icon-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.clip-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sy-text);
+}
+
+.clip-icon-btn-on {
+  color: var(--sy-accent);
+}
+
+.clip-icon-btn-on svg {
+  fill: currentColor;
+}
+
+.clip-icon-btn-danger:hover {
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+}
+
+/* ---- Empty ---- */
+
+.clip-empty {
+  padding: var(--sy-9) var(--sy-6);
+  text-align: center;
+}
+
+.clip-empty-title {
+  margin: 0 0 var(--sy-3);
+  font-size: var(--sy-fs-md);
+  font-weight: var(--sy-fw-semi);
+}
+
+.clip-empty-body {
+  margin: 0 auto;
+  max-width: 44ch;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
+  line-height: var(--sy-lh-body);
+}
+
+/* ---- Footer ---- */
+
+.clip-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sy-4);
+  padding: var(--sy-4) var(--sy-5);
+  border-top: 1px solid var(--sy-border);
+  background: var(--sy-sunken);
+}
+
+.clip-hint {
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
+}
+
+.clip-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+}
+
+.clip-text-btn {
+  padding: var(--sy-2) var(--sy-3);
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--sy-text-dim);
+  font-family: inherit;
+  font-size: var(--sy-fs-xs);
+  cursor: pointer;
+  transition: color var(--sy-dur-fast) var(--sy-ease-out),
+    background var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.clip-text-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sy-text);
+}
+
+.clip-text-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.clip-text-btn-danger {
+  color: var(--sy-danger);
+  font-weight: var(--sy-fw-semi);
+}
+
+.clip-text-btn-danger:hover:not(:disabled) {
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+}

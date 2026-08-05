@@ -1,5 +1,100 @@
 # Synapse — Session Handoff
 
+## CI added (2026-08-05)
+
+PR checks now run on every pull request — see the CI section of `CLAUDE.md` for
+the commands and `.github/workflows/pr.yml` for the jobs. Two things worth
+knowing before you next touch this:
+
+1. **Formatting is a ratchet.** The tree predates Prettier and rustfmt, so CI
+   only checks files a PR touches. Run `npm run format` / `cargo fmt` on your
+   own changes. `CLAUDE.md` documents how to retire the ratchet later.
+2. **`scripts/guards/` protects fail-silent invariants** (note colours, window
+   labels, keyring features, meter fill children, …). They are grep-shaped and
+   so can rot silently, which is why `selftest.mjs` breaks each invariant in a
+   sandbox and requires its guard to catch it. Adding a guard means adding its
+   selftest case.
+
+Clippy is now clean at `-D warnings` (six pre-existing warnings fixed), and the
+frontend has ESLint + 23 Vitest tests over the pure modules.
+
+**Still to do:** branch protection is not fully configured — required status
+checks need selecting in repo settings once these checks have run once.
+
+---
+
+## Merge: Notepad file I/O ported onto sticky notes (2026-08-05)
+
+PR #1 (@anirudh1804) added Save / Save As / Open to the single Notepad and
+landed on `main` while the UX overhaul was still local. The overhaul deletes
+Notepad entirely, so the merge had a real choice to make: drop the feature or
+carry it. It was carried.
+
+- `notes::read_from` / `write_to` and the `save_note_to` / `load_note_from`
+  commands survive unchanged, as do their unit tests (73 pass now, was 71).
+- `tauri-plugin-dialog` and the `dialog:default` capability stay.
+- The UI moved to `StickyNote.tsx`: Open… loads a file into the note,
+  Save to file… links one, Ctrl+S writes immediately.
+
+**One deliberate semantic change.** In the Notepad, a non-null path _replaced_
+the internal note as the save destination — that was the point of the bug fix
+in #1, since two rival destinations meant autosave clobbered the wrong one. On
+sticky notes the store is the note's identity, so `persist()` always writes the
+store and _additionally_ writes the linked file. A note that stopped saving
+itself because a file was linked would lose data when its window closed.
+
+The file link is per-window and not persisted, which matches what #1 shipped
+(`currentPath` was component state there too). Persisting it would need a field
+on `Note` and a decision about what happens when the file moves or is deleted.
+
+**Unverified:** no manual click-through of the ported Open / Save As dialogs.
+
+---
+
+## UX/UI overhaul (2026-08-02) — READ THIS FIRST, it changed a lot
+
+Eight requested UX changes, planned at
+`C:\Users\sahil\.claude\plans\use-impeccable-and-grill-me-spicy-perlis.md`.
+**Automated-verified only** (`npx tsc --noEmit`, `npm run build`, `cargo build`,
+`cargo test --lib` → 71 pass, zero warnings; app launches and stays up with the
+ASR model loaded and no panics). **No manual click-through has been done yet** —
+everything in the plan's Verification section is still outstanding.
+
+What changed structurally:
+
+1. **`theme.css` is new and is now the design system.** Every window stylesheet
+   `@import`s it. See `DESIGN.md`.
+2. **Dictation no longer auto-stops.** Enter or click the circle. Silence-stop is
+   now `settings.voice.auto_stop_on_silence`, default **off**. `MAX_RECORD_MS` is
+   5 min (runaway guard). New `dictation-tick` event drives a live level meter +
+   timer.
+3. **The wheel drags by its centre hub** (`start_overlay_drag`). Position never
+   persists. The `GetAsyncKeyState` guard in that command is load-bearing — see
+   its doc comment.
+4. **Snippets are gone; Clipboard history replaces them.** `snippets.rs` deleted,
+   `clipboard_history.rs` added; old `snippets.json` auto-migrates to pinned
+   entries and the file is renamed `.migrated`, never deleted. Window label
+   `snippet-picker` → `clipboard`. **Privacy: history is persisted to disk and
+   will contain passwords** — the product owner chose this with the tradeoff
+   stated; the off switch and Clear are the mitigation.
+5. **Notepad → sticky notes, one OS window per note.** `notepad.txt`
+   auto-migrates to note #1 (renamed, never deleted). Notes hub at `notes-hub`,
+   notes at `note-<id>` via a capability glob.
+6. **The AI panel is now a voice orb**, undecorated + transparent, with real
+   multi-turn history (Rust-side `Conversation`, 20-turn cap) and
+   sentence-streamed audio so speech starts before generation finishes.
+7. Screenshot toast dwells 3.4s, is click-to-reveal and dismissible early.
+8. Settings names the actual model/engine (`ASR_MODEL`, `TTS_ENGINE` in
+   `models.ts`) and gained a Clipboard section.
+
+**Still unverified / known risk:** pocket-tts playback has _never_ been observed
+on real hardware, and this work rewrote exactly that code path
+(`tts_pocket.rs` now queues clips on one long-lived sink). If audio misbehaves,
+establish whether the pre-existing single-shot path worked first — otherwise an
+old failure is indistinguishable from a new one.
+
+---
+
 **Last updated:** 2026-08-02
 **Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
 foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);
@@ -110,7 +205,7 @@ model picker UI exists yet.
 
 **`keyring` needs a platform-store feature — silent-failure trap, don't undo this.** Plain
 `keyring = "3"` compiles in the crate's in-memory `mock` store on Windows/macOS, and the mock
-returns a *fresh empty credential* from every `Entry::new`. Result: `set_api_key` reported
+returns a _fresh empty credential_ from every `Entry::new`. Result: `set_api_key` reported
 success, `has_api_key` always returned false, the panel stayed on "No key" forever, and Send
 stayed disabled (`disabled={streaming || !hasKey}`) — with no error surfaced anywhere. Fixed by
 declaring `keyring` with `windows-native` / `apple-native` per-target in `Cargo.toml`. Guarded by
@@ -169,7 +264,7 @@ Design: `docs/superpowers/specs/2026-08-01-settings-foundation-ai-section-design
   settings and resolves `model_for(provider)` before calling it — `ai.rs` stays a pure HTTP/SSE
   module with no file I/O. Anthropic `max_tokens` raised 4096 → 16000: on `claude-opus-5` (now
   reachable via the model picker) extended thinking is on by default and `max_tokens` caps
-  thinking *plus* response text, so the old limit would truncate mid-answer.
+  thinking _plus_ response text, so the old limit would truncate mid-answer.
 - **API keys still never touch `settings.json`** — `Settings`/`AiSettings` carry no key fields;
   key management goes through the OS keychain via `set_api_key`/`delete_api_key` only.
 
@@ -232,6 +327,7 @@ confirm first-run detection and the full download-and-launch path actually work 
 environment that already has a model on disk.
 
 **Known minor/deferred items** (raised in task reviews, not blockers):
+
 - A small idempotency race window in `spawn_download`'s `AtomicBool` guard — low impact and
   self-correcting (a duplicate spawn just resumes the same in-progress download).
 - The `model_status` command has the side effect of creating the model directory even for a
@@ -255,7 +351,7 @@ symptoms turned out to have distinct root causes, all now fixed and verified on-
   generated from `assets/synapse_icon.png` by `src-tauri/installer/make-art.ps1` — rerun that
   script if the logo changes. `installMode: currentUser` keeps the no-UAC install behavior.
 - **"12 MB / 0 MB" progress** — `spawn_download`'s HEAD size probe used reqwest's
-  `Response::content_length()`, which reports the *body* length; a HEAD reply has no body, so
+  `Response::content_length()`, which reports the _body_ length; a HEAD reply has no body, so
   every file's size came back as 0 and the overall total was 0. Replaced with
   `remote_file_size()`, which reads the `Content-Length` / `X-Linked-Size` headers (Hugging Face
   reports the real size of LFS/Xet files only in the latter). Three mockito tests cover it.
@@ -272,7 +368,7 @@ symptoms turned out to have distinct root causes, all now fixed and verified on-
   in the UI instead of vanishing as an unhandled rejection. Button relabeled **Finish**.
 - **Onboarding redesigned** — step rail, hero mark, feature cards, real progress meter
   (percentage, MB of MB, transfer rate, ETA, indeterminate sweep until the total is known), and
-  a mic step that explains what the Windows prompt will do *before* triggering it. Download and
+  a mic step that explains what the Windows prompt will do _before_ triggering it. Download and
   progress logic now lives in `src/modelDownload.ts` (`useModelDownload`), shared with
   Settings → Voice so both surfaces show the same meter.
 
@@ -310,7 +406,7 @@ placeholders): `docs/superpowers/plans/2026-08-01-pocket-tts-api-notes.md`.
   module verified only against 2.1.0), and pre-warms model weights with a throwaway request,
   reusing `model_download::download_one_file`/`remote_file_size` rather than reimplementing
   chunked download logic. Two corrections to the plan's own draft code, found only by actually
-  downloading and inspecting the real release archive: it must be unpacked into the *parent* of
+  downloading and inspecting the real release archive: it must be unpacked into the _parent_ of
   the python directory (the archive's paths already start with `python/...`), and pip must be
   invoked as `python.exe -m pip install` — this archive has no `Scripts/pip.exe`.
 - **`resources/tts_sidecar.py`** loads the model once at import (`TTSModel.load_model()`), then
@@ -357,7 +453,7 @@ partially covers the "Quit Synapse button" item listed under M5 sub-project B be
 step sat on "Installing packages…" with a dead, empty bar. Setup was in fact completing normally
 (~2min 17s to the `READY` marker, ~1 GB installed). Three defects compounded:
 
-1. Both indeterminate meters were rendered as *childless* self-closing divs
+1. Both indeterminate meters were rendered as _childless_ self-closing divs
    (`<div className="ob-meter ob-meter-idle" />`), but the sweep animation is defined on a
    **descendant** selector (`.ob-meter-idle .ob-meter-fill`). With no child there was nothing to
    animate — a permanently frozen track. `settings/VoiceSection.tsx` had the identical bug with
@@ -370,13 +466,13 @@ step sat on "Installing packages…" with a dead, empty bar. Setup was in fact c
 
 Fixed 1 and 2: the hook now exposes `downloaded`/`total`/`known`/`percent`, both consumers nest the
 `-fill` div, and the `python` stage shows a real percentage plus "X of Y". Stages that genuinely
-have nothing countable (`packages`, `weights`) now show an *animated* sweep rather than a frozen
+have nothing countable (`packages`, `weights`) now show an _animated_ sweep rather than a frozen
 bar. **Fix 3 was deliberately not attempted** — parsing pip's stdout depends on an output format
 pip does not guarantee as an API.
 
 **Verified:** `npx tsc --noEmit` clean, `cargo build` clean, `npm run tauri build` produced the NSIS
 installer, and the dev build launched and ran the TTS setup pipeline to completion on real hardware.
-**Not verified:** nobody has yet watched the *fixed* meters animate through all three stages, and
+**Not verified:** nobody has yet watched the _fixed_ meters animate through all three stages, and
 actual TTS audio playback still hasn't been observed.
 
 **Bundle targets stay NSIS-only.** Re-adding the WiX `.msi` was considered and rejected again for
@@ -405,7 +501,7 @@ the same reason as before — its dialogs can only be rebranded, not modernized.
   `tts_setup.rs`, `tts_pocket.rs`, and `lib.rs`. Everything else is manual click-through — notably
   every meter/progress UI, which is exactly where the v0.1.1 frozen-bar bug hid.
 - **Speak Selected Text — manual end-to-end pass still incomplete.** The setup pipeline (Python
-  download, pip install, weight prewarm) *has* now been observed completing on real hardware, and
+  download, pip install, weight prewarm) _has_ now been observed completing on real hardware, and
   the wheel/onboarding UI has been seen. **Still unobserved: sidecar spawn for a real request and
   actual audio playback**, plus the fixed progress meters animating through all three stages.
   `.set-select` CSS rule is missing for the voice dropdown (cosmetic).
@@ -423,7 +519,7 @@ the same reason as before — its dialogs can only be rebranded, not modernized.
    install, Start Menu shortcut, Apps listing, uninstall).
 3. M5 sub-project B: the remaining settings sections, including the Quit button.
 4. **Speak Selected Text — finish the manual end-to-end pass** (see write-up above). Setup now
-   completes on real hardware; what remains is: confirm the *fixed* progress meters animate through
+   completes on real hardware; what remains is: confirm the _fixed_ progress meters animate through
    all three stages (delete `%APPDATA%\com.synapse.app\tts-env\READY` to force a re-run), pick a
    voice, select text in another app and speak it, verify interrupting mid-speech works, verify the
    AI panel's read-aloud also picks up the pocket-tts voice, and verify the OS-native fallback

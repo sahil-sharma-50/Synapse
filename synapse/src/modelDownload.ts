@@ -16,7 +16,8 @@ export function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-function formatEta(seconds: number): string {
+/** Exported for unit tests; the hook is the only runtime caller. */
+export function formatEta(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return "";
   if (seconds < 60) return `${Math.ceil(seconds)}s left`;
   const minutes = Math.ceil(seconds / 60);

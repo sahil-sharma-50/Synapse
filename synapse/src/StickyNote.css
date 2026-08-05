@@ -1,0 +1,222 @@
+@import "./theme.css";
+
+/* A single sticky note. Undecorated window, so this file draws the whole
+   thing including its title bar.
+ *
+ * The colours are deliberately deep and desaturated rather than the highlighter
+ * yellows of a paper sticky: these windows float on top of a dark desktop UI
+ * all day, and paper-bright surfaces would glare. Each note carries its own ink
+ * tinted from its own hue — never gray — so text stays legible on every colour.
+ */
+
+html,
+body,
+#root {
+  overflow: hidden;
+}
+
+.note-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--note-bg);
+  color: var(--note-ink);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  overflow: hidden;
+}
+
+.note-amber {
+  --note-bg: #3a2e12;
+  --note-accent: #f0c46a;
+  --note-ink: #f6e7c6;
+  --note-ink-dim: rgba(246, 231, 198, 0.55);
+}
+
+.note-rose {
+  --note-bg: #3b1d24;
+  --note-accent: #f0879c;
+  --note-ink: #f8dce2;
+  --note-ink-dim: rgba(248, 220, 226, 0.55);
+}
+
+.note-sky {
+  --note-bg: #152b3e;
+  --note-accent: #7cc4f5;
+  --note-ink: #d9ecf9;
+  --note-ink-dim: rgba(217, 236, 249, 0.55);
+}
+
+.note-mint {
+  --note-bg: #16332a;
+  --note-accent: #7fdcaa;
+  --note-ink: #d6f2e3;
+  --note-ink-dim: rgba(214, 242, 227, 0.55);
+}
+
+.note-slate {
+  --note-bg: #24262b;
+  --note-accent: #a9b4c4;
+  --note-ink: #e2e6ec;
+  --note-ink-dim: rgba(226, 230, 236, 0.55);
+}
+
+/* ---- Header (this is the title bar) ---- */
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-3);
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 var(--sy-3) 0 var(--sy-4);
+  background: rgba(0, 0, 0, 0.16);
+  cursor: default;
+}
+
+/* Fills the space between the swatch and the buttons so most of the bar is
+   grabbable, without swallowing clicks meant for the controls. */
+.note-grip {
+  flex: 1;
+  align-self: stretch;
+}
+
+.note-swatch {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--note-accent);
+  cursor: pointer;
+  transition: transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.note-swatch:hover {
+  transform: scale(1.2);
+}
+
+.note-head-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--note-ink-dim);
+  cursor: pointer;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.note-head-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.note-head-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--note-ink);
+}
+
+/* ---- Colour picker ---- */
+
+.note-colors {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-3);
+  padding: var(--sy-3) var(--sy-4);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.note-color-dot {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.note-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.note-color-on {
+  border-color: currentColor;
+}
+
+.note-color-amber {
+  background: #f0c46a;
+}
+.note-color-rose {
+  background: #f0879c;
+}
+.note-color-sky {
+  background: #7cc4f5;
+}
+.note-color-mint {
+  background: #7fdcaa;
+}
+.note-color-slate {
+  background: #a9b4c4;
+}
+
+/* ---- Body ---- */
+
+.note-textarea {
+  flex: 1;
+  width: 100%;
+  padding: var(--sy-5);
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--note-ink);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  line-height: var(--sy-lh-body);
+}
+
+.note-textarea::placeholder {
+  color: var(--note-ink-dim);
+}
+
+.note-root * {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+/* ---- Linked file ---- */
+
+/* Failures used to be swallowed entirely; this is deliberately loud, since a
+   silent save failure looks identical to a successful one. */
+.note-error {
+  padding: var(--sy-2) var(--sy-5);
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+  font-size: var(--sy-fs-xs);
+  line-height: var(--sy-lh-tight);
+}
+
+/* The note's file link, when it has one. Quiet by default — it is provenance,
+   not an action. The trailing dot is the unsaved marker. */
+.note-file {
+  overflow: hidden;
+  padding: var(--sy-2) var(--sy-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--note-ink-dim);
+  font-family: var(--sy-font-mono);
+  font-size: var(--sy-fs-micro);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

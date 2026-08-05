@@ -78,12 +78,23 @@ fn get_api_key(provider: Provider) -> Result<String, String> {
 /// the rest of the app's thread-per-task style (see asr.rs).
 /// `model` is resolved by the caller from settings — this module does no file
 /// I/O, so it stays a pure HTTP/SSE client.
+///
+/// `messages` is the whole conversation so far, oldest first, each entry a
+/// `("user" | "assistant", text)` pair. `on_delta` is invoked for every chunk
+/// as it arrives, which is what lets the caller start speaking the first
+/// sentence while the rest is still generating — this module deliberately
+/// knows nothing about TTS.
 pub fn stream_chat(
     app: &tauri::AppHandle,
     provider: Provider,
     model: &str,
-    prompt: &str,
+    messages: &[(String, String)],
+    on_delta: &mut dyn FnMut(&str),
 ) -> Result<String, String> {
+    let wire: Vec<Value> = messages
+        .iter()
+        .map(|(role, content)| json!({"role": role, "content": content}))
+        .collect();
     let api_key = get_api_key(provider)?;
     let client = reqwest::blocking::Client::new();
 
@@ -100,7 +111,7 @@ pub fn stream_chat(
                 // *plus* response text, so a tight limit truncates mid-answer.
                 "max_tokens": 16000,
                 "stream": true,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": wire,
             }))
             .send(),
         Provider::Openai => client
@@ -110,7 +121,7 @@ pub fn stream_chat(
             .json(&json!({
                 "model": model,
                 "stream": true,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": wire,
             }))
             .send(),
     }
@@ -150,6 +161,7 @@ pub fn stream_chat(
         if let Some(text) = delta_text {
             full_text.push_str(text);
             let _ = app.emit("ai-delta", text);
+            on_delta(text);
         }
     }
 

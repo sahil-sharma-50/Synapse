@@ -1,163 +1,462 @@
+@import "./theme.css";
+
+/* Settings — an Operate surface. The visitor came here to change one thing and
+   leave, so scanability and a single trailing control axis beat expression.
+   Brand lives in the details: the icon rhythm, the focus ring, the meter. */
+
 .set-root {
   display: flex;
   width: 100%;
   height: 100%;
-  box-sizing: border-box;
-  background: #1a1a1c;
-  color: #eaeaea;
-  font-family: -apple-system, "Segoe UI", sans-serif;
-  font-size: 13px;
+  background: var(--sy-bg);
+  color: var(--sy-text);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
 }
 
 .set-loading {
   align-items: center;
   justify-content: center;
-  opacity: 0.45;
+  color: var(--sy-text-faint);
 }
 
+/* ---- Sidebar ---- */
+
 .set-sidebar {
-  width: 180px;
+  width: 204px;
   flex-shrink: 0;
-  padding: 12px 8px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  padding: var(--sy-5) var(--sy-4) var(--sy-5);
+  background: var(--sy-sunken);
+  border-right: 1px solid var(--sy-border);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: stretch;
+  gap: var(--sy-1);
+  overflow-y: auto;
+}
+
+.set-group-label {
+  margin: var(--sy-6) var(--sy-4) var(--sy-3);
+  font-size: var(--sy-fs-micro);
+  font-weight: var(--sy-fw-semi);
+  letter-spacing: var(--sy-track-wide);
+  text-transform: uppercase;
+  color: var(--sy-text-faint);
+}
+
+.set-group-label:first-of-type {
+  margin-top: var(--sy-1);
 }
 
 .set-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+  width: 100%;
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--sy-4) var(--sy-4);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--sy-r-md);
   background: transparent;
-  color: #eaeaea;
+  color: var(--sy-text-dim);
   font: inherit;
   cursor: pointer;
+  outline: none;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
 }
 
 .set-nav:hover {
   background: rgba(255, 255, 255, 0.06);
+  color: var(--sy-text);
 }
 
-.set-nav-active {
-  background: rgba(90, 170, 255, 0.16);
-  color: #9fcaff;
+.set-nav:focus-visible {
+  box-shadow: var(--sy-focus-ring);
 }
+
+.set-nav-active,
+.set-nav-active:hover {
+  background: var(--sy-accent-bg);
+  color: var(--sy-accent);
+}
+
+.set-nav-icon,
+.set-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.set-nav-icon svg,
+.set-row-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.set-row-icon {
+  color: var(--sy-text-faint);
+}
+
+.set-sidebar-foot {
+  margin-top: auto;
+  padding: var(--sy-5) var(--sy-4) var(--sy-1);
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
+}
+
+/* ---- Content ---- */
 
 .set-main {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: var(--sy-8) var(--sy-8) var(--sy-9);
 }
 
 .set-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sy-4);
+  max-width: var(--sy-content-max);
+}
+
+/* More space above a heading than below it — the page head owns the gap to the
+   first card, not the card. */
+.set-page-head {
+  margin-bottom: var(--sy-7);
 }
 
 .set-title {
-  margin: 0 0 18px;
-  font-size: 16px;
-  font-weight: 600;
+  margin: 0 0 var(--sy-3);
+  font-family: var(--sy-font-display);
+  font-size: var(--sy-fs-xl);
+  font-weight: var(--sy-fw-semi);
+  letter-spacing: var(--sy-track-tight);
+  line-height: var(--sy-lh-tight);
+}
+
+.set-subtitle {
+  margin: 0;
+  font-size: var(--sy-fs-base);
+  color: var(--sy-text-dim);
+  line-height: var(--sy-lh-body);
+  max-width: 58ch;
+}
+
+.set-card-title {
+  margin: var(--sy-6) 0 var(--sy-3) var(--sy-1);
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+  letter-spacing: var(--sy-track-wide);
+  text-transform: uppercase;
+  color: var(--sy-text-faint);
+}
+
+.set-card-title:first-of-type {
+  margin-top: 0;
+}
+
+/* Elevation is declared once: a border, no shadow. */
+.set-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--sy-panel);
+  border: 1px solid var(--sy-border);
+  border-radius: var(--sy-r-lg);
+  padding: 0 var(--sy-5);
+}
+
+.set-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+  min-height: 46px;
+  padding: var(--sy-4) 0;
+  border-bottom: 1px solid var(--sy-border);
+}
+
+.set-card-row:last-child {
+  border-bottom: none;
+}
+
+/* A whole-row <label> should feel live under the cursor, since clicking
+   anywhere in it operates the control. */
+label.set-card-row {
+  cursor: pointer;
+  margin: 0 calc(var(--sy-5) * -1);
+  padding-left: var(--sy-5);
+  padding-right: var(--sy-5);
+  transition: background var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+label.set-card-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* A row that belongs to the one above it (Model ID under Model). Indented to
+   the label axis so it reads as a continuation, without an empty icon element
+   standing in as a spacer. */
+.set-card-subrow .set-label {
+  padding-left: calc(16px + var(--sy-4));
 }
 
 .set-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: var(--sy-4);
 }
 
+/* The label stack lets a row carry a secondary line (a model name, a version)
+   without breaking the single trailing control axis. */
 .set-label {
-  width: 90px;
   flex-shrink: 0;
-  opacity: 0.7;
-  font-size: 12px;
+  font-size: var(--sy-fs-base);
+  color: var(--sy-text);
+}
+
+.set-label-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.set-sublabel {
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Controls sit flush against the card's right edge, so every row in a card
+   lines up on a single trailing axis regardless of label length.
+   `.set-key` is the same box with a narrower input — grouped rather than
+   duplicated so the two can never drift apart. */
+.set-control,
+.set-key {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+  min-width: 0;
+}
+
+.set-key .set-input {
+  width: 190px;
 }
 
 .set-input {
-  flex: 1;
+  width: 250px;
+  max-width: 100%;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 7px 9px;
-  color: #eaeaea;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sy-border-strong);
+  border-radius: var(--sy-r-md);
+  padding: var(--sy-3) var(--sy-4);
+  color: var(--sy-text);
   font: inherit;
   outline: none;
+  transition: border-color var(--sy-dur-fast) var(--sy-ease-out),
+    box-shadow var(--sy-dur-fast) var(--sy-ease-out);
 }
 
-.set-key {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.set-input::placeholder {
+  color: var(--sy-text-faint);
+}
+
+.set-input:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.set-input:focus {
+  border-color: var(--sy-accent-solid);
+  box-shadow: 0 0 0 3px var(--sy-accent-bg);
+}
+
+.set-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+select.set-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: var(--sy-8);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23eaeaea' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75L6 7.75L9 4.75'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--sy-4) center;
+  background-size: 12px 12px;
+}
+
+/* WebView2 renders the native popup with the OS default palette otherwise. */
+.set-input option {
+  background: var(--sy-panel);
+  color: var(--sy-text);
 }
 
 .set-badge {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 10px;
+  font-size: var(--sy-fs-micro);
+  font-weight: var(--sy-fw-semi);
+  padding: 3px var(--sy-4);
+  border-radius: var(--sy-r-pill);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
 .set-ok {
-  background: rgba(90, 220, 130, 0.18);
-  color: #7fe8a0;
+  background: var(--sy-ok-bg);
+  color: var(--sy-ok);
 }
 
 .set-missing {
-  background: rgba(255, 160, 80, 0.18);
-  color: #ffb877;
+  background: var(--sy-warn-bg);
+  color: var(--sy-warn);
 }
 
+/* ---- Buttons ---- */
+
 .set-btn {
-  padding: 7px 12px;
-  border-radius: 6px;
+  padding: var(--sy-3) var(--sy-5);
+  border-radius: var(--sy-r-md);
   border: none;
-  background: rgba(90, 170, 255, 0.85);
-  color: #0a0a0c;
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--sy-accent-solid);
+  color: var(--sy-ink-on-accent);
+  font-family: inherit;
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
   cursor: pointer;
   white-space: nowrap;
+  transition: filter var(--sy-dur-fast) var(--sy-ease-out),
+    transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.set-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.set-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+.set-btn:focus-visible {
+  box-shadow: var(--sy-focus-ring);
+}
+
+.set-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .set-btn-quiet {
-  background: rgba(255, 255, 255, 0.08);
-  color: #eaeaea;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--sy-text);
 }
+
+.set-btn-quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  filter: none;
+}
+
+.set-btn-danger {
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+}
+
+.set-btn-danger:hover:not(:disabled) {
+  background: rgba(255, 110, 110, 0.26);
+  filter: none;
+}
+
+/* ---- Switch ----
+   A checkbox styled as a track+knob. The native input stays in the DOM and
+   keeps the label association, keyboard behaviour and focus for free. */
+
+.set-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--sy-border-strong);
+  border-radius: var(--sy-r-pill);
+  cursor: pointer;
+  transition: background var(--sy-dur-base) var(--sy-ease-out),
+    border-color var(--sy-dur-base) var(--sy-ease-out);
+}
+
+.set-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--sy-text);
+  box-shadow: var(--sy-shadow-1);
+  transition: transform var(--sy-dur-base) var(--sy-ease-out);
+}
+
+.set-switch:checked {
+  background: var(--sy-accent-solid);
+  border-color: var(--sy-accent-solid);
+}
+
+.set-switch:checked::after {
+  transform: translateX(16px);
+  background: var(--sy-ink-on-accent);
+}
+
+.set-switch:focus-visible {
+  box-shadow: var(--sy-focus-ring);
+}
+
+.set-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Progress ---- */
 
 .set-progress {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  align-items: stretch;
+  gap: var(--sy-3);
 }
 
 .set-meter {
   height: 6px;
-  border-radius: 99px;
+  border-radius: var(--sy-r-pill);
   background: rgba(255, 255, 255, 0.09);
   overflow: hidden;
 }
 
+/* IMPORTANT: the idle animation targets this child, so the fill div must be
+   rendered even when there is no percentage to show. A childless track is a
+   permanently frozen empty bar that users read as a hang. */
 .set-meter-fill {
   height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #4b8ef0, #6fc0ff);
-  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-radius: var(--sy-r-pill);
+  background: linear-gradient(90deg, var(--sy-accent-solid), var(--sy-accent));
+  transition: width var(--sy-dur-slow) var(--sy-ease-out);
 }
 
 /* Total size not known yet — sweep instead of claiming a percentage. */
 .set-meter-idle .set-meter-fill {
   width: 38%;
-  animation: set-sweep 1.25s ease-in-out infinite;
+  animation: set-sweep 1.25s var(--sy-ease-in-out) infinite;
 }
 
 @keyframes set-sweep {
@@ -172,15 +471,15 @@
 .set-progress-foot {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
-  opacity: 0.55;
+  gap: var(--sy-5);
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-dim);
   font-variant-numeric: tabular-nums;
 }
 
 .set-error {
-  color: #ff8a8a;
-  font-size: 12px;
-  margin-bottom: 12px;
+  color: var(--sy-danger);
+  font-size: var(--sy-fs-sm);
 }
 
 .set-note {
@@ -189,8 +488,58 @@
 }
 
 .set-hint {
-  margin-top: 20px;
-  font-size: 11px;
-  opacity: 0.45;
-  line-height: 1.5;
+  margin: var(--sy-4) var(--sy-1) 0;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-faint);
+  line-height: var(--sy-lh-body);
+  max-width: 68ch;
+}
+
+/* ---- Narrow windows ----
+   The Settings window is user-resizable and the AI section is often opened
+   deep-linked into a small window (see the second reference screenshot). Below
+   this the sidebar collapses to icons rather than crushing the content. */
+@media (max-width: 620px) {
+  .set-sidebar {
+    width: 56px;
+    padding-left: var(--sy-3);
+    padding-right: var(--sy-3);
+  }
+
+  .set-nav {
+    justify-content: center;
+    padding-left: var(--sy-2);
+    padding-right: var(--sy-2);
+  }
+
+  .set-nav-label,
+  .set-group-label,
+  .set-sidebar-foot {
+    display: none;
+  }
+
+  .set-main {
+    padding: var(--sy-7) var(--sy-6) var(--sy-8);
+  }
+
+  /* Stacked rows: the trailing-axis alignment stops being worth its cost when
+     the control would be squeezed under 150px. */
+  .set-card-row {
+    flex-wrap: wrap;
+  }
+
+  .set-control,
+  .set-key {
+    flex-basis: 100%;
+    margin-left: 0;
+    padding-left: calc(16px + var(--sy-4));
+  }
+
+  .set-input {
+    width: 100%;
+  }
+
+  .set-key .set-input {
+    width: 100%;
+  }
 }

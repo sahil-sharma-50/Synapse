@@ -1,4 +1,4 @@
-export type WedgeId = "stt" | "ai" | "screenshot" | "snippet" | "notepad" | "speak-selected" | "settings" | "quit";
+export type WedgeId = "stt" | "ai" | "screenshot" | "clipboard" | "notepad" | "speak-selected" | "settings" | "quit";
 
 export interface WedgeDef {
   id: WedgeId;
@@ -25,9 +25,9 @@ export const WEDGES: WedgeDef[] = [
     icon: "M9 4l-1.5 2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.5L15 4H9Zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
   },
   {
-    id: "snippet",
-    label: "Snippet",
-    icon: "M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm2 4v2h12V8H6Zm0 4v2h8v-2H6Z",
+    id: "clipboard",
+    label: "Clipboard",
+    icon: "M9 2h6a1 1 0 0 1 1 1v1h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V3a1 1 0 0 1 1-1Zm1 2v1h4V4h-4ZM8 10v1.6h8V10H8Zm0 4v1.6h5.5V14H8Z",
   },
   {
     id: "notepad",

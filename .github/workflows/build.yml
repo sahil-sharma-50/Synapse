@@ -1,0 +1,48 @@
+name: Installer build
+
+# The full NSIS build takes many minutes and is not worth spending on a PR that
+# only touches docs or the frontend, so it is scoped to changes that can plausibly
+# break packaging — plus a manual trigger for when you want it anyway.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "synapse/src-tauri/**"
+      - "synapse/package.json"
+      - "synapse/package-lock.json"
+      - ".github/workflows/build.yml"
+
+concurrency:
+  group: build-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: synapse/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: synapse/src-tauri
+      - run: npm ci
+        working-directory: synapse
+      # No signing key in CI; this proves the app packages, not that it ships.
+      - name: Build installer
+        run: npm run tauri build
+        working-directory: synapse
+      - uses: actions/upload-artifact@v7
+        with:
+          name: synapse-nsis-installer
+          path: synapse/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7

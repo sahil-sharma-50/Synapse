@@ -23,7 +23,7 @@ const STEP_LABELS: Record<Step, string> = {
 const FEATURES = [
   { icon: "🎙", title: "Dictate anywhere", body: "Speak and the text lands in whatever you're typing in." },
   { icon: "✨", title: "Ask AI in place", body: "Send a prompt or a screenshot and insert the answer." },
-  { icon: "📝", title: "Notes & snippets", body: "A scratchpad and reusable text, one hotkey away." },
+  { icon: "📝", title: "Notes & clipboard", body: "Sticky notes and everything you've copied, one hotkey away." },
 ];
 
 export default function Onboarding() {
