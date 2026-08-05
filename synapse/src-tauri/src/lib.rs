@@ -19,6 +19,7 @@ use tauri::{
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_updater::UpdaterExt;
 
 const OVERLAY_LABEL: &str = "overlay";
 /// The notes list. Individual sticky notes are separate windows labelled
@@ -830,39 +831,93 @@ fn download_tts_engine(app: tauri::AppHandle) {
     tts_setup::spawn_setup(app);
 }
 
-/// Checks GitHub for a newer release than the running version. Runs the HTTP
-/// call off the main thread (async command + spawn_blocking) so clicking
-/// "Check for updates" never freezes the UI — same never-block-the-main-
-/// thread precedent as `speak_text`/`send_ai_message`.
-#[tauri::command]
-async fn check_for_update() -> Result<updater::UpdateInfo, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let client = reqwest::blocking::Client::new();
-        updater::check_for_update(&client, updater::API_BASE, updater::REPO, env!("CARGO_PKG_VERSION"))
-    })
-    .await
-    .map_err(|e| format!("update check failed: {e}"))?
-}
-
-/// Starts a background download of the new installer. Progress/success/failure
-/// come back over `update-download-progress`/`update-download-done`/
-/// `update-download-error` events, not a return value — same pattern as
-/// `download_model`.
+/// Asks the updater plugin whether the signed release manifest advertises a
+/// newer version. Async so the network round-trip never blocks the UI thread —
+/// same never-block-the-main-thread precedent as `speak_text`/`send_ai_message`.
 ///
-/// Deliberately takes no URL. The downloaded file gets executed by
-/// `install_update`, so the target is resolved from GitHub inside
-/// `spawn_update_download` instead of being handed in by the webview.
+/// Neither this nor `download_update` takes a URL or a version from the
+/// caller: the endpoint and the public key that must sign it are pinned in
+/// `tauri.conf.json`, so no window can influence what gets installed.
 #[tauri::command]
-fn download_update(app: tauri::AppHandle) {
-    updater::spawn_update_download(app);
+async fn check_for_update(app: tauri::AppHandle) -> Result<updater::UpdateInfo, String> {
+    let current = app.package_info().version.to_string();
+    let found = app
+        .updater()
+        .map_err(|e| format!("update check failed: {e}"))?
+        .check()
+        .await
+        .map_err(|e| format!("update check failed: {e}"))?;
+
+    Ok(match found {
+        Some(update) => updater::UpdateInfo {
+            current_version: current,
+            latest_version: update.version,
+            available: true,
+        },
+        None => updater::UpdateInfo {
+            latest_version: current.clone(),
+            current_version: current,
+            available: false,
+        },
+    })
 }
 
-/// Launches the downloaded installer silently (`/S`) and exits the app so the
-/// install can proceed without a live process holding files. Fails loudly if
-/// there's nothing downloaded yet.
+/// Downloads the update and installs it. The plugin verifies the installer's
+/// signature against the pinned public key before it runs anything, so a
+/// tampered or unsigned artifact fails here rather than executing.
+///
+/// Progress is reported over `update-download-progress`/`update-download-done`
+/// rather than a return value, since the download outlives any single
+/// round-trip — same shape as `download_model`. There is no separate "install"
+/// command: download and install are one operation in the plugin, and leaving
+/// a verified installer sitting on disk waiting for a second call would just
+/// be a window for it to be swapped.
 #[tauri::command]
-fn install_update(app: tauri::AppHandle) -> Result<(), String> {
-    updater::launch_installer(app)
+async fn download_update(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(update) = app
+        .updater()
+        .map_err(|e| format!("update failed: {e}"))?
+        .check()
+        .await
+        .map_err(|e| format!("update failed: {e}"))?
+    else {
+        return Err("already on the latest version".to_string());
+    };
+
+    // Before the install starts, not after: once NSIS is running this process
+    // can be terminated at any moment, and the marker is what keeps the next
+    // launch out of the onboarding wizard.
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    updater::mark_update_pending(&data_dir)?;
+
+    let progress_app = app.clone();
+    let downloaded = std::sync::atomic::AtomicU64::new(0);
+    let done_app = app.clone();
+
+    update
+        .download_and_install(
+            move |chunk, total| {
+                let so_far = downloaded.fetch_add(chunk as u64, std::sync::atomic::Ordering::SeqCst) + chunk as u64;
+                let _ = progress_app.emit(
+                    "update-download-progress",
+                    updater::UpdateDownloadProgress {
+                        bytes_downloaded: so_far,
+                        bytes_total: total.unwrap_or(0),
+                    },
+                );
+            },
+            move || {
+                let _ = done_app.emit("update-download-done", ());
+            },
+        )
+        .await
+        .map_err(|e| {
+            // The marker is only meaningful if an install actually happened.
+            let _ = updater::take_update_pending_marker(&data_dir);
+            format!("update failed: {e}")
+        })?;
+
+    app.restart();
 }
 
 /// Resolves provider and model itself from settings rather than trusting a
@@ -1160,6 +1215,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(tts_pocket::TtsSidecar::new())
         .manage(GeometryQueue::default())
         .manage(Conversation::default())
@@ -1209,8 +1265,7 @@ pub fn run() {
             tts_setup_status,
             download_tts_engine,
             check_for_update,
-            download_update,
-            install_update
+            download_update
         ])
         .setup(|app| {
             let model_dir = model_download::model_dir(app.handle())?;
@@ -1383,7 +1438,7 @@ pub fn run() {
             //
             // The hook cannot tell an upgrade from a first install, so an
             // in-app update drops the same marker and would send a long-time
-            // user back through first-run setup. `install_update` leaves its
+            // user back through first-run setup. `download_update` leaves its
             // own marker for that case; both are consumed unconditionally so
             // neither can linger and fire on some later launch.
             let initial_settings = settings::load(&settings_path(app.handle())?);

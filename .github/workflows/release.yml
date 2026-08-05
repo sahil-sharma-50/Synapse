@@ -1,0 +1,71 @@
+name: Release
+
+# Publishes a signed release. The updater in the shipped app will only install
+# artifacts signed by the private half of the key pinned as
+# `plugins.updater.pubkey` in tauri.conf.json, so this workflow is the only
+# supported way to cut a release — an installer built anywhere else will be
+# refused by every user's copy of the app, which is the point.
+#
+# To release: bump the version in package.json, Cargo.toml and tauri.conf.json
+# (they must agree), then push a matching `v*` tag.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build a release from (e.g. v0.2.0)"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Windows installer (signed)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: synapse/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: synapse/src-tauri
+
+      - run: npm ci
+        working-directory: synapse
+
+      # Catches a placeholder pubkey or an endpoint pointing at the wrong
+      # repository before a release is cut rather than after users have it.
+      - name: Repo guards
+        run: node scripts/guards/run.mjs
+
+      # tauri-action builds the bundle, signs it with the key below, generates
+      # latest.json from the signatures, and uploads both to the release. The
+      # endpoint in tauri.conf.json points at `releases/latest/download/
+      # latest.json`, so the release must not stay a draft or the updater will
+      # 404 — hence draft: false.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: synapse
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "Synapse __VERSION__"
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

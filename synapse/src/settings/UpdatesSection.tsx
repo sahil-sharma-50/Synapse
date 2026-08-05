@@ -8,8 +8,6 @@ interface UpdateInfo {
   current_version: string;
   latest_version: string;
   available: boolean;
-  download_url: string;
-  file_size: number;
 }
 
 interface UpdateDownloadProgress {
@@ -20,10 +18,15 @@ interface UpdateDownloadProgress {
 type Status = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "installing";
 
 /**
- * Settings → Updates: checks GitHub for a newer release, downloads the new
- * installer, and hands off to the silent NSIS install (which restarts the
- * app). Progress comes back over the `update-download-*` events the Rust side
- * emits, same shape as `useModelDownload`.
+ * Settings → Updates. The Rust side runs `tauri-plugin-updater`, which
+ * verifies the installer's signature against the pinned public key before
+ * running it — nothing here chooses or validates what gets installed, and no
+ * URL crosses this boundary. Progress comes back over the `update-download-*`
+ * events, same shape as `useModelDownload`.
+ *
+ * Download and install are a single backend call, so there is no separate
+ * "install" step to drive: `update-download-done` means the bytes are in and
+ * the install has begun, after which the app restarts itself.
  */
 export default function UpdatesSection() {
   const [status, setStatus] = useState<Status>("idle");
@@ -44,25 +47,12 @@ export default function UpdatesSection() {
     const unlistenProgress = listen<UpdateDownloadProgress>("update-download-progress", (e) =>
       setProgress(e.payload),
     );
-    // The user already consented by clicking "Download & Install", so once the
-    // download finishes, install immediately — the app exits ~1.5s later.
-    const unlistenDone = listen("update-download-done", async () => {
-      setStatus("installing");
-      try {
-        await invoke("install_update");
-      } catch (e) {
-        setStatus("available");
-        setError(String(e));
-      }
-    });
-    const unlistenError = listen<string>("update-download-error", (e) => {
-      setStatus("available");
-      setError(e.payload);
-    });
+    // The install starts as soon as the download lands, inside the same
+    // backend call — this only moves the UI on.
+    const unlistenDone = listen("update-download-done", () => setStatus("installing"));
     return () => {
       unlistenProgress.then((f) => f());
       unlistenDone.then((f) => f());
-      unlistenError.then((f) => f());
     };
   }, []);
 
@@ -85,8 +75,8 @@ export default function UpdatesSection() {
     setProgress(null);
     setStatus("downloading");
     try {
-      // No URL argument on purpose — the backend resolves the release itself
-      // rather than executing whatever this window asks it to download.
+      // Resolves, verifies and installs entirely in the backend. On success
+      // this never returns — the app restarts into the new version.
       await invoke("download_update");
     } catch (e) {
       setStatus("available");
@@ -105,8 +95,9 @@ export default function UpdatesSection() {
       <h2 className="set-title">Updates</h2>
 
       <p className="set-hint">
-        Synapse checks GitHub for new releases. When a newer version is published, you can download
-        and install it right here — no need to grab the installer from the browser.
+        Synapse checks GitHub for new releases. Updates are signature-checked against a key built
+        into this app before anything is installed, so a download that has been tampered with is
+        refused rather than run.
       </p>
 
       <div className="set-row">
@@ -129,7 +120,7 @@ export default function UpdatesSection() {
             </button>
             {status === "available" && info && (
               <button className="set-btn" onClick={downloadAndInstall} disabled={busy}>
-                Download &amp; Install ({formatBytes(info.file_size)})
+                Download &amp; Install v{info.latest_version}
               </button>
             )}
           </div>

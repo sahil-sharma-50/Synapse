@@ -36,9 +36,14 @@ jobs:
           workspaces: synapse/src-tauri
       - run: npm ci
         working-directory: synapse
-      # No signing key in CI; this proves the app packages, not that it ships.
+      # Updater artifacts are switched off here, not because signing is
+      # optional but because it is mandatory: with createUpdaterArtifacts on,
+      # `tauri build` fails outright when TAURI_SIGNING_PRIVATE_KEY is unset,
+      # and that secret is deliberately unavailable to PR builds (a fork PR
+      # must never be able to sign something users would install). This job
+      # proves the app packages; release.yml is what proves it ships.
       - name: Build installer
-        run: npm run tauri build
+        run: npm run tauri build -- --config src-tauri/tauri.pr-build.conf.json
         working-directory: synapse
       - uses: actions/upload-artifact@v7
         with:

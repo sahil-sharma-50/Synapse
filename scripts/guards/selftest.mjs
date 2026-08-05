@@ -105,22 +105,24 @@ const CASES = [
     guard: "./update-feed.mjs",
     what: "the update feed repointed at someone else's repository",
     break: (edit) =>
-      edit("synapse/src-tauri/src/updater.rs", (s) =>
-        s.replace(
-          'pub const REPO: &str = "sahil-sharma-50/Synapse"',
-          'pub const REPO: &str = "someone-else/Synapse"',
-        ),
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace("github.com/sahil-sharma-50/Synapse", "github.com/someone-else/Synapse"),
       ),
   },
   {
     guard: "./update-feed.mjs",
-    what: "release lookups pointed off GitHub's API",
+    what: "the updater's signing pubkey emptied out",
     break: (edit) =>
-      edit("synapse/src-tauri/src/updater.rs", (s) =>
-        s.replace(
-          'pub const API_BASE: &str = "https://api.github.com/repos"',
-          'pub const API_BASE: &str = "http://releases.example/repos"',
-        ),
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace(/"pubkey": "[^"]*"/, '"pubkey": ""'),
+      ),
+  },
+  {
+    guard: "./update-feed.mjs",
+    what: "updater artifacts (and with them the .sig files) turned off",
+    break: (edit) =>
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace('"createUpdaterArtifacts": true', '"createUpdaterArtifacts": false'),
       ),
   },
 ];
@@ -138,6 +140,10 @@ for (const [i, testCase] of CASES.entries()) {
       join(sandbox, "synapse/src-tauri/Cargo.toml"),
     );
     cpSync(join(ROOT, "synapse/package.json"), join(sandbox, "synapse/package.json"));
+    cpSync(
+      join(ROOT, "synapse/src-tauri/tauri.conf.json"),
+      join(sandbox, "synapse/src-tauri/tauri.conf.json"),
+    );
 
     const edit = (rel, fn) => {
       const path = join(sandbox, rel);
