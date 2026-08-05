@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import AiSection from "./settings/AiSection";
 import VoiceSection from "./settings/VoiceSection";
+import UpdatesSection from "./settings/UpdatesSection";
 import type { Settings as SettingsData } from "./models";
 import "./Settings.css";
 
@@ -12,6 +13,7 @@ import "./Settings.css";
 const SECTIONS = [
   { id: "ai", label: "AI" },
   { id: "voice", label: "Voice" },
+  { id: "updates", label: "Updates" },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -64,6 +66,7 @@ export default function Settings() {
         {error && <div className="set-error">{error}</div>}
         {section === "ai" && <AiSection settings={settings} onChange={update} />}
         {section === "voice" && <VoiceSection settings={settings} onChange={update} />}
+        {section === "updates" && <UpdatesSection />}
       </main>
     </div>
   );

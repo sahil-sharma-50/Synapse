@@ -9,6 +9,7 @@ mod settings;
 mod tts;
 mod tts_pocket;
 mod tts_setup;
+mod updater;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -472,6 +473,42 @@ fn download_tts_engine(app: tauri::AppHandle) {
     tts_setup::spawn_setup(app);
 }
 
+/// Checks GitHub for a newer release than the running version. Runs the HTTP
+/// call off the main thread (async command + spawn_blocking) so clicking
+/// "Check for updates" never freezes the UI — same never-block-the-main-
+/// thread precedent as `speak_text`/`send_ai_message`.
+#[tauri::command]
+async fn check_for_update() -> Result<updater::UpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let client = reqwest::blocking::Client::new();
+        updater::check_for_update(
+            &client,
+            "https://api.github.com/repos",
+            updater::REPO,
+            env!("CARGO_PKG_VERSION"),
+        )
+    })
+    .await
+    .map_err(|e| format!("update check failed: {e}"))?
+}
+
+/// Starts a background download of the new installer. Progress/success/failure
+/// come back over `update-download-progress`/`update-download-done`/
+/// `update-download-error` events, not a return value — same pattern as
+/// `download_model`.
+#[tauri::command]
+fn download_update(app: tauri::AppHandle, url: String, size: u64) {
+    updater::spawn_update_download(app, url, size);
+}
+
+/// Launches the downloaded installer silently (`/S`) and exits the app so the
+/// install can proceed without a live process holding files. Fails loudly if
+/// there's nothing downloaded yet.
+#[tauri::command]
+fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    updater::launch_installer(app)
+}
+
 /// Resolves provider and model itself from settings rather than trusting a
 /// frontend-supplied provider: the AI panel may invoke this before its own
 /// `get_settings` call has resolved, and a missing/undefined argument would
@@ -632,7 +669,10 @@ pub fn run() {
             model_status,
             download_model,
             tts_setup_status,
-            download_tts_engine
+            download_tts_engine,
+            check_for_update,
+            download_update,
+            install_update
         ])
         .setup(|app| {
             let model_dir = model_download::model_dir(app.handle())?;
