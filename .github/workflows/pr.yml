@@ -114,7 +114,7 @@ jobs:
 
       - name: Prettier
         run: |
-          mapfile -t files < <(grep -E '\.(ts|tsx|js|jsx|css|json|md|html)$' changed.txt || true)
+          mapfile -t files < <(grep -E '\.(ts|tsx|js|jsx|mjs|cjs|css|json|md|html|ya?ml)$' changed.txt || true)
           if [ ${#files[@]} -eq 0 ]; then echo "no Prettier-owned files changed"; exit 0; fi
           # Run the binary directly: npx has no reliable --prefix, and the
           # config (.prettierrc.json / .prettierignore) is resolved per file

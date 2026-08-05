@@ -24,7 +24,10 @@ describe("WEDGES", () => {
 // stringifies as "5.51e-15" — the exponent has to be part of the number.
 const NUMBER = String.raw`(-?[\d.]+(?:e[+-]?\d+)?)`;
 const moveTo = (d: string) =>
-  d.match(new RegExp(`^M ${NUMBER} ${NUMBER}`))!.slice(1).map(Number);
+  d
+    .match(new RegExp(`^M ${NUMBER} ${NUMBER}`))!
+    .slice(1)
+    .map(Number);
 
 describe("wedgePath", () => {
   it("starts the first wedge at the top of the ring", () => {
