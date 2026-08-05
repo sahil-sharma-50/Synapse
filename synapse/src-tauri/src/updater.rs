@@ -135,11 +135,7 @@ pub const INSTALLER_NAME: &str = "synapse-setup.exe";
 
 /// `app_data_dir()/update/` — the installer's staging directory.
 pub fn update_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("update");
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("update");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
@@ -217,10 +213,7 @@ fn download_installer(
     let _ = std::fs::remove_file(&final_path);
     let _ = std::fs::remove_file(&part_path);
 
-    let mut response = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("download failed: {e}"))?;
+    let mut response = client.get(url).send().map_err(|e| format!("download failed: {e}"))?;
     if !response.status().is_success() {
         return Err(format!("download failed: server returned {}", response.status()));
     }
@@ -229,9 +222,7 @@ fn download_installer(
     let mut downloaded: u64 = 0;
     let mut buf = [0u8; 64 * 1024];
     loop {
-        let n = response
-            .read(&mut buf)
-            .map_err(|e| format!("download failed: {e}"))?;
+        let n = response.read(&mut buf).map_err(|e| format!("download failed: {e}"))?;
         if n == 0 {
             break;
         }
@@ -282,10 +273,7 @@ mod tests {
     fn newer_version_is_detected() {
         assert!(is_newer_than("v0.2.0", "0.1.1"));
         assert!(is_newer_than("0.2.0", "v0.1.1"), "v prefix is ignored");
-        assert!(
-            is_newer_than("0.10.0", "0.9.9"),
-            "numeric compare, not lexicographic"
-        );
+        assert!(is_newer_than("0.10.0", "0.9.9"), "numeric compare, not lexicographic");
         assert!(is_newer_than("0.2.0-beta", "0.1.1"), "pre-release suffix parses");
     }
 
@@ -326,13 +314,15 @@ mod tests {
             .create();
 
         let client = reqwest::blocking::Client::new();
-        let info = check_for_update(&client, &server.url(), "owner/repo", "0.1.1")
-            .expect("check succeeds");
+        let info = check_for_update(&client, &server.url(), "owner/repo", "0.1.1").expect("check succeeds");
 
         assert!(info.available);
         assert_eq!(info.current_version, "0.1.1");
         assert_eq!(info.latest_version, "0.2.0");
-        assert_eq!(info.download_url, "https://example.com/new.exe", "newest setup.exe wins");
+        assert_eq!(
+            info.download_url, "https://example.com/new.exe",
+            "newest setup.exe wins"
+        );
         assert_eq!(info.file_size, 123456);
     }
 
@@ -354,8 +344,7 @@ mod tests {
             .create();
 
         let client = reqwest::blocking::Client::new();
-        let info = check_for_update(&client, &server.url(), "owner/repo", "0.1.1")
-            .expect("check succeeds");
+        let info = check_for_update(&client, &server.url(), "owner/repo", "0.1.1").expect("check succeeds");
 
         assert!(!info.available);
     }
@@ -418,8 +407,7 @@ mod tests {
         let url = format!("{}/installer.exe", server.url());
         let client = reqwest::blocking::Client::new();
         let mut progress = Vec::new();
-        download_installer(&client, &url, &dir, body.len() as u64, |d| progress.push(d))
-            .expect("download succeeds");
+        download_installer(&client, &url, &dir, body.len() as u64, |d| progress.push(d)).expect("download succeeds");
 
         assert_eq!(std::fs::read(dir.join(INSTALLER_NAME)).unwrap(), body.as_slice());
         assert!(
@@ -458,10 +446,7 @@ mod tests {
     #[test]
     fn server_error_status_is_an_error() {
         let mut server = mockito::Server::new();
-        let _m = server
-            .mock("GET", "/installer.exe")
-            .with_status(500)
-            .create();
+        let _m = server.mock("GET", "/installer.exe").with_status(500).create();
 
         let dir = temp_dir("installer-500");
         let url = format!("{}/installer.exe", server.url());
