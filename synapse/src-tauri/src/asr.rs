@@ -192,7 +192,8 @@ pub fn record_and_transcribe(
         .map_err(|e| format!("could not read microphone config: {e}"))?;
     let sample_format = supported.sample_format();
     let config: cpal::StreamConfig = supported.into();
-    let in_rate = config.sample_rate.0;
+    // cpal 0.16 dropped the SampleRate newtype; this is a plain u32 now.
+    let in_rate = config.sample_rate;
     let channels = config.channels;
     println!("[synapse] mic: {in_rate} Hz, {channels} ch, {sample_format:?}");
 
