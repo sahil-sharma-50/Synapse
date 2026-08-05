@@ -1,5 +1,28 @@
 # Synapse — Session Handoff
 
+## CI added (2026-08-05)
+
+PR checks now run on every pull request — see the CI section of `CLAUDE.md` for
+the commands and `.github/workflows/pr.yml` for the jobs. Two things worth
+knowing before you next touch this:
+
+1. **Formatting is a ratchet.** The tree predates Prettier and rustfmt, so CI
+   only checks files a PR touches. Run `npm run format` / `cargo fmt` on your
+   own changes. `CLAUDE.md` documents how to retire the ratchet later.
+2. **`scripts/guards/` protects fail-silent invariants** (note colours, window
+   labels, keyring features, meter fill children, …). They are grep-shaped and
+   so can rot silently, which is why `selftest.mjs` breaks each invariant in a
+   sandbox and requires its guard to catch it. Adding a guard means adding its
+   selftest case.
+
+Clippy is now clean at `-D warnings` (six pre-existing warnings fixed), and the
+frontend has ESLint + 23 Vitest tests over the pure modules.
+
+**Still to do:** branch protection is not fully configured — required status
+checks need selecting in repo settings once these checks have run once.
+
+---
+
 ## Merge: Notepad file I/O ported onto sticky notes (2026-08-05)
 
 PR #1 (@anirudh1804) added Save / Save As / Open to the single Notepad and

@@ -1,0 +1,30 @@
+{
+  "AiPanel.css": {
+    "hex": 14,
+    "px": 0
+  },
+  "App.css": {
+    "hex": 1,
+    "px": 1
+  },
+  "Clipboard.css": {
+    "hex": 0,
+    "px": 1
+  },
+  "NotesHub.css": {
+    "hex": 5,
+    "px": 1
+  },
+  "Onboarding.css": {
+    "hex": 9,
+    "px": 27
+  },
+  "Settings.css": {
+    "hex": 0,
+    "px": 2
+  },
+  "StickyNote.css": {
+    "hex": 20,
+    "px": 0
+  }
+}

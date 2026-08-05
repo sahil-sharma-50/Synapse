@@ -24,7 +24,11 @@ npm install
 npm approve-scripts esbuild   # one-time, allows esbuild's install script to run
 npm run tauri dev             # starts Vite + launches the Tauri app window
 npm run tauri build           # production build, produces the NSIS .exe installer on Windows
-npx tsc --noEmit              # typecheck frontend
+npm run typecheck             # tsc --noEmit
+npm run lint                  # eslint (react-hooks rules are the ones that matter here)
+npm run test                  # vitest, the pure modules only
+npm run format                # prettier --write over the repo
+npm run guards                # repo-specific invariant checks (see below)
 ```
 
 Rust, from `synapse/src-tauri/`:
@@ -33,7 +37,37 @@ Rust, from `synapse/src-tauri/`:
 cargo build
 cargo test --lib              # unit tests (settings.rs, ai.rs, model_download.rs)
 cargo test --lib <test_name>  # run a single test
+cargo clippy --all-targets -- -D warnings   # CI runs this; the tree is clean, keep it that way
+cargo fmt                     # rustfmt.toml sets max_width = 120 to match the existing style
 ```
+
+## CI
+
+`.github/workflows/pr.yml` runs on every PR: repo guards, frontend (typecheck/lint/test/build), Rust (clippy `-D warnings` + `cargo test --lib`, on `windows-latest`), formatting, and `cargo audit`. The NSIS installer build is a separate workflow, scoped to PRs touching `src-tauri/` plus manual dispatch, because it takes minutes.
+
+**Formatting is a ratchet, not a wall.** The tree predates both Prettier and rustfmt, so CI only checks the files a PR actually touches. Touching a file means formatting it — `npm run format` or `cargo fmt` on your own changes.
+
+To retire the ratchet, on a **clean working tree** (never mixed into feature work — a whitespace-only diff layered on real changes is what makes a PR unreviewable):
+
+```bash
+npm run format && (cd src-tauri && cargo fmt)   # from synapse/
+git commit -am "chore: apply prettier and rustfmt across the tree"
+git rev-parse HEAD >> ../.git-blame-ignore-revs  # keep git blame pointing at authors
+```
+
+Then in `.github/workflows/pr.yml`, replace the `formatting` job's changed-files steps with plain `npx prettier --check .` and `cargo fmt --check`.
+
+**The guards in `scripts/guards/` are the interesting part.** Each one protects an invariant with a *fail-silent* mode — the kind where the code builds, runs, and quietly does the wrong thing, so neither the compiler nor a test would catch it:
+
+- note colours match between `notes::COLORS` and `noteColors.ts` (backend rejects unknown colours)
+- window labels agree across `lib.rs`, `App.tsx` and `capabilities/default.json`, including the `notes-hub` / `note-*` near-collision
+- indeterminate meters nest their `-fill` child (a childless track renders as a frozen bar)
+- no *new* raw hex or bare-px spacing in window stylesheets, ratcheted against `css-baseline.json`
+- `keyring` declares a native platform store per target (plain `keyring = "3"` compiles the mock and never persists)
+- no credential-shaped field in `settings.rs`
+- the pocket-tts version and ASR download size the UI states match what Rust pins
+
+They are grep-shaped, which means they can rot silently — rename a const and the pattern stops matching anything while still reporting "ok". So `scripts/guards/selftest.mjs` breaks each invariant in a copy of the tree and requires the matching guard to complain. CI runs the selftest *before* the guards. Adding a guard means adding its selftest case.
 
 Windows dev workflow when `npm run tauri dev`'s own output is unreliable to capture: run the Vite dev server and the built exe as two separate processes, redirecting the exe's stdout/stderr to a log file, then read the log after reproducing a bug. See `PROGRESS.md` "Dev workflow" for the exact PowerShell commands.
 

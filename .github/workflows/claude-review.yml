@@ -1,0 +1,56 @@
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    name: Automated review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Opt-in: without the secret this job no-ops instead of failing every PR.
+      # `secrets` cannot be tested directly in a job-level `if`, hence the step.
+      - name: Is the API key configured?
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: echo "present=${ANTHROPIC_API_KEY:+yes}" >> "$GITHUB_OUTPUT"
+
+      - name: Review
+        if: steps.key.outputs.present == 'yes'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request. CLAUDE.md at the repo root documents the
+            architecture and, more usefully, the failure modes this codebase has
+            already hit — read it first and treat its rules as the standard.
+
+            Focus on things a compiler cannot see:
+            - Window labels, capability globs, and the notes-hub / note- collision.
+            - Utility windows that close instead of hiding (a destroyed Tauri
+              window cannot be shown again, and show() fails silently).
+            - Clipboard writes made without a ClipboardGuard, which get logged
+              back to the user as things they copied.
+            - Blocking calls on the audio thread, and sleep_until_end() in
+              particular, which makes barge-in impossible.
+            - Colours or spacing typed as literals instead of theme.css tokens.
+            - Indeterminate meters rendered without their -fill child.
+            - macOS code paths presented as verified; this project has no macOS
+              hardware, so they are untested by definition.
+
+            Be concrete and cite file:line. Report only what you are confident
+            about — say nothing rather than pad the list. If the PR is clean,
+            say so in one line.
+          claude_args: "--allowed-tools Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"

@@ -1,0 +1,143 @@
+name: PR
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR makes the previous run's answer irrelevant.
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Fail fast on Windows runners rather than waiting out a network stall.
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 3
+
+jobs:
+  # Repo-specific invariants. Dependency-free Node, so this job answers in
+  # seconds and is usually the one that tells you what actually broke.
+  guards:
+    name: Repo guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Guards can still fail (selftest)
+        run: node scripts/guards/selftest.mjs
+      - name: Check invariants
+        run: node scripts/guards/run.mjs
+
+  frontend:
+    name: Frontend (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: synapse
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: synapse/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test
+      # Vite catches what tsc does not: unresolvable imports, and broken
+      # `@import` chains in the stylesheets that all hang off theme.css.
+      - name: Build
+        run: npm run build
+
+  rust:
+    name: Rust (clippy, test)
+    # Windows-first app; every platform-specific path in the tree is the
+    # Windows one, and the macOS code is untested by policy.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: synapse/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: synapse/src-tauri
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Unit tests
+        run: cargo test --lib
+
+  # Formatting is a ratchet, not a wall: the tree predates both formatters, so
+  # only the files a PR actually touches have to come out clean. Run
+  # `npm run format` / `cargo fmt` on your own changes to satisfy this.
+  formatting:
+    name: Formatting (changed files)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: synapse/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci
+        working-directory: synapse
+
+      - name: Collect changed files
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only --diff-filter=ACMR "$BASE" "$HEAD" > changed.txt
+          echo "--- changed in this PR ---"
+          cat changed.txt
+
+      - name: Prettier
+        run: |
+          mapfile -t files < <(grep -E '\.(ts|tsx|js|jsx|css|json|md|html)$' changed.txt || true)
+          if [ ${#files[@]} -eq 0 ]; then echo "no Prettier-owned files changed"; exit 0; fi
+          # Run the binary directly: npx has no reliable --prefix, and the
+          # config (.prettierrc.json / .prettierignore) is resolved per file
+          # from the repo root, which is where this step runs.
+          ./synapse/node_modules/.bin/prettier --check --ignore-unknown "${files[@]}"
+
+      - name: rustfmt
+        run: |
+          mapfile -t files < <(grep -E '\.rs$' changed.txt || true)
+          if [ ${#files[@]} -eq 0 ]; then echo "no Rust files changed"; exit 0; fi
+          rustfmt --check --edition 2021 --config-path synapse/src-tauri/rustfmt.toml "${files[@]}"
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Advisory-only: an unpatched advisory in a transitive dep of the audio /
+      # ONNX stack should be visible without blocking unrelated work.
+      - name: Audit dependencies
+        continue-on-error: true
+        run: cargo audit --file synapse/src-tauri/Cargo.lock

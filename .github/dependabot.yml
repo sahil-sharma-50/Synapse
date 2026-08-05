@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /synapse
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # React, Vite and the lint stack each move as a unit; one PR per group
+      # beats five PRs that only pass together anyway.
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      tooling:
+        patterns:
+          ["eslint*", "@eslint/*", "typescript-eslint", "prettier*", "vitest", "vite", "@vitejs/*"]
+      tauri:
+        patterns: ["@tauri-apps/*"]
+
+  - package-ecosystem: cargo
+    directory: /synapse/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+    ignore:
+      # parakeet-rs pins a specific `ort` build; bumping either independently has
+      # broken the ONNX runtime link before. Update these two deliberately.
+      - dependency-name: parakeet-rs
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
