@@ -45,17 +45,19 @@ cargo fmt                     # rustfmt.toml sets max_width = 120 to match the e
 
 `.github/workflows/pr.yml` runs on every PR: repo guards, frontend (typecheck/lint/test/build), Rust (clippy `-D warnings` + `cargo test --lib`, on `windows-latest`), formatting, and `cargo audit`. The NSIS installer build is a separate workflow, scoped to PRs touching `src-tauri/` plus manual dispatch, because it takes minutes.
 
-**Formatting is a ratchet, not a wall.** The tree predates both Prettier and rustfmt, so CI only checks the files a PR actually touches. Touching a file means formatting it — `npm run format` or `cargo fmt` on your own changes.
+**Prettier is a ratchet, rustfmt is a wall.** The frontend predates Prettier, so CI only checks the `.ts/.tsx/.css/.json/...` files a PR actually touches. Touching one means formatting it — `npm run format` on your own changes.
 
-To retire the ratchet, on a **clean working tree** (never mixed into feature work — a whitespace-only diff layered on real changes is what makes a PR unreviewable):
+Rust is no longer scoped that way: the crate is fully rustfmt-clean and CI runs plain `cargo fmt --check`. Run `cargo fmt` before you push. The per-file version was **unfixable, not merely strict** — `rustfmt` follows `mod` declarations, so `rustfmt --check src/lib.rs` re-checks every module in the crate, and stable rustfmt has no `--skip-children` to opt out. That made "changed files only" a fiction: the first PR to touch `lib.rs` inherited the whole tree's formatting debt.
+
+To retire the Prettier ratchet too, on a **clean working tree** (never mixed into feature work — a whitespace-only diff layered on real changes is what makes a PR unreviewable):
 
 ```bash
-npm run format && (cd src-tauri && cargo fmt)   # from synapse/
-git commit -am "chore: apply prettier and rustfmt across the tree"
+npm run format                                   # from synapse/
+git commit -am "chore: apply prettier across the tree"
 git rev-parse HEAD >> ../.git-blame-ignore-revs  # keep git blame pointing at authors
 ```
 
-Then in `.github/workflows/pr.yml`, replace the `formatting` job's changed-files steps with plain `npx prettier --check .` and `cargo fmt --check`.
+Then in `.github/workflows/pr.yml`, replace the `formatting` job's Prettier changed-files step with plain `npx prettier --check .`.
 
 **The guards in `scripts/guards/` are the interesting part.** Each one protects an invariant with a _fail-silent_ mode — the kind where the code builds, runs, and quietly does the wrong thing, so neither the compiler nor a test would catch it:
 
