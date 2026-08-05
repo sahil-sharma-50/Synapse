@@ -61,6 +61,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The signing key currently has no password, and an undefined secret
+          # expands to an empty string — which is what the signer expects. The
+          # variable must still be set: left entirely unset, the signer prompts
+          # for a password and the job hangs until it times out.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: synapse
