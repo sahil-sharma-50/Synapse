@@ -15,7 +15,7 @@ jobs:
       # The history already follows this convention (feat:, fix:, docs:, chore:),
       # and squash-merge uses the PR title as the commit subject — so the title
       # is what actually lands in the log.
-      - uses: amannn/action-semantic-pull-request@v5
+      - uses: amannn/action-semantic-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
