@@ -47,7 +47,7 @@ fn parse(version: &str) -> Vec<u64> {
         .trim()
         .trim_start_matches('v')
         .trim_start_matches('V')
-        .split(|c: char| c == '.' || c == '-' || c == '+')
+        .split(['.', '-', '+'])
         .filter_map(|part| part.parse::<u64>().ok())
         .collect()
 }
