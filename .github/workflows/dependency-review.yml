@@ -11,7 +11,7 @@ jobs:
     name: Review new dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Flags newly introduced vulnerable or awkwardly licensed dependencies at
       # the moment they are added, which is the only cheap time to reconsider.
       #
