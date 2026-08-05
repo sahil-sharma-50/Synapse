@@ -15,11 +15,17 @@ jobs:
       # Flags newly introduced vulnerable or awkwardly licensed dependencies at
       # the moment they are added, which is the only cheap time to reconsider.
       #
-      # Advisory for now, like cargo audit: the action hard-errors unless
-      # Dependency graph is enabled for the repo
-      # (Settings > Code security > Dependency graph), and a check that is red
-      # for a reason no PR author can fix just trains people to ignore red.
-      # Drop continue-on-error once the setting is on.
+      # Advisory until Dependency graph is switched on. Without it the action
+      # hard-errors with "Dependency review is not supported on this repository"
+      # on every PR, which no PR author can fix — and a check that is red for a
+      # reason outside the diff just teaches people to ignore red.
+      #
+      # It is a single toggle, and this job becomes real the moment it is on:
+      #   Settings > Code security > Dependency graph  (repo admin only; there
+      #   is no REST endpoint for it on public repos, so it cannot be scripted)
+      # Drop continue-on-error then. Public repos default to on, but this one
+      # has it off — verify with `gh api repos/OWNER/REPO/dependency-graph/sbom`,
+      # which 404s while it is disabled.
       - uses: actions/dependency-review-action@v4
         continue-on-error: true
         with:
