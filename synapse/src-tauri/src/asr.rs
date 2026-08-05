@@ -72,7 +72,11 @@ struct SilenceState {
 
 impl SilenceState {
     fn new() -> Self {
-        Self { heard_speech: false, silence_since: None, level: 0.0 }
+        Self {
+            heard_speech: false,
+            silence_since: None,
+            level: 0.0,
+        }
     }
 }
 
@@ -176,10 +180,7 @@ where
 ///
 /// `on_tick` is called roughly every 50 ms with the live input level so the
 /// caller can drive a meter. It must not block.
-pub fn record_and_transcribe(
-    auto_stop: bool,
-    mut on_tick: impl FnMut(Tick),
-) -> Result<String, String> {
+pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> Result<String, String> {
     STOP.store(false, Ordering::SeqCst);
 
     let host = cpal::default_host();
@@ -202,12 +203,24 @@ pub fn record_and_transcribe(
     let state = Arc::new(Mutex::new(SilenceState::new()));
 
     let stream = match sample_format {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
-        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
-        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
-        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
-        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
-        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop),
+        SampleFormat::F32 => {
+            build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
+        SampleFormat::I16 => {
+            build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
+        SampleFormat::U16 => {
+            build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
+        SampleFormat::I32 => {
+            build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
+        SampleFormat::I8 => {
+            build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
+        SampleFormat::U8 => {
+            build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
+        }
         other => Err(format!("unsupported microphone sample format: {other:?}")),
     }?;
 
@@ -237,7 +250,11 @@ pub fn record_and_transcribe(
             return Err("no speech detected - is the right microphone selected?".into());
         }
 
-        on_tick(Tick { level, elapsed_ms: elapsed as u64, heard_speech });
+        on_tick(Tick {
+            level,
+            elapsed_ms: elapsed as u64,
+            heard_speech,
+        });
         std::thread::sleep(Duration::from_millis(50));
     }
     drop(stream);
@@ -248,7 +265,10 @@ pub fn record_and_transcribe(
     }
 
     let samples = to_mono_16k(&raw, in_rate, channels);
-    println!("[synapse] captured {:.1}s of audio", samples.len() as f32 / TARGET_SAMPLE_RATE as f32);
+    println!(
+        "[synapse] captured {:.1}s of audio",
+        samples.len() as f32 / TARGET_SAMPLE_RATE as f32
+    );
 
     let model_lock = MODEL
         .get()
