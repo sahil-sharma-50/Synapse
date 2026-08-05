@@ -223,6 +223,19 @@ pub fn migrate_legacy(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Read/write an arbitrary path the user picked in a file dialog. Unlike the
+/// store, a missing file is an error rather than an empty note — the dialog
+/// only ever hands back a path that existed a moment ago, so "not found" here
+/// means something is genuinely wrong and silently opening a blank buffer
+/// would look like the file's contents were lost.
+pub fn read_from(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+}
+
+pub fn write_to(path: &str, content: &str) -> Result<(), String> {
+    std::fs::write(path, content).map_err(|e| format!("{path}: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,6 +348,29 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dir.join("notes.json.bak")).expect("backup exists"),
             "{not json at all"
+        );
+    }
+
+    #[test]
+    fn write_to_then_read_from_round_trips() {
+        let path = temp_dir("round-trip").join("note.txt");
+        let path = path.to_str().unwrap();
+
+        write_to(path, "hello\nworld").unwrap();
+        assert_eq!(read_from(path).unwrap(), "hello\nworld");
+
+        // Saving again must replace, not append.
+        write_to(path, "replaced").unwrap();
+        assert_eq!(read_from(path).unwrap(), "replaced");
+    }
+
+    #[test]
+    fn read_from_errors_on_a_missing_file_instead_of_returning_empty() {
+        let path = temp_dir("missing").join("nope.txt");
+        let err = read_from(path.to_str().unwrap()).unwrap_err();
+        assert!(
+            err.contains("nope.txt"),
+            "error should name the path: {err}"
         );
     }
 }

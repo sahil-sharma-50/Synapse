@@ -1,5 +1,33 @@
 # Synapse — Session Handoff
 
+## Merge: Notepad file I/O ported onto sticky notes (2026-08-05)
+
+PR #1 (@anirudh1804) added Save / Save As / Open to the single Notepad and
+landed on `main` while the UX overhaul was still local. The overhaul deletes
+Notepad entirely, so the merge had a real choice to make: drop the feature or
+carry it. It was carried.
+
+- `notes::read_from` / `write_to` and the `save_note_to` / `load_note_from`
+  commands survive unchanged, as do their unit tests (73 pass now, was 71).
+- `tauri-plugin-dialog` and the `dialog:default` capability stay.
+- The UI moved to `StickyNote.tsx`: Open… loads a file into the note,
+  Save to file… links one, Ctrl+S writes immediately.
+
+**One deliberate semantic change.** In the Notepad, a non-null path *replaced*
+the internal note as the save destination — that was the point of the bug fix
+in #1, since two rival destinations meant autosave clobbered the wrong one. On
+sticky notes the store is the note's identity, so `persist()` always writes the
+store and *additionally* writes the linked file. A note that stopped saving
+itself because a file was linked would lose data when its window closed.
+
+The file link is per-window and not persisted, which matches what #1 shipped
+(`currentPath` was component state there too). Persisting it would need a field
+on `Note` and a decision about what happens when the file moves or is deleted.
+
+**Unverified:** no manual click-through of the ported Open / Save As dialogs.
+
+---
+
 ## UX/UI overhaul (2026-08-02) — READ THIS FIRST, it changed a lot
 
 Eight requested UX changes, planned at

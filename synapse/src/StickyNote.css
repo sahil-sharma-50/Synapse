@@ -195,3 +195,28 @@ body,
 .note-root * {
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
+
+/* ---- Linked file ---- */
+
+/* Failures used to be swallowed entirely; this is deliberately loud, since a
+   silent save failure looks identical to a successful one. */
+.note-error {
+  padding: var(--sy-2) var(--sy-5);
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+  font-size: var(--sy-fs-xs);
+  line-height: var(--sy-lh-tight);
+}
+
+/* The note's file link, when it has one. Quiet by default — it is provenance,
+   not an action. The trailing dot is the unsaved marker. */
+.note-file {
+  overflow: hidden;
+  padding: var(--sy-2) var(--sy-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--note-ink-dim);
+  font-family: var(--sy-font-mono);
+  font-size: var(--sy-fs-micro);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

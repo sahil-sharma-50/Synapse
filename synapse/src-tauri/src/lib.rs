@@ -534,6 +534,20 @@ struct NoteSummary {
     updated_at: i64,
 }
 
+/// Write to an explicit path the user picked in a file dialog, rather than to
+/// the notes store that `save_note_content` owns. A sticky note linked to a
+/// file writes to *both*: the store is the note's identity and must stay
+/// authoritative, the file is an export that tracks it.
+#[tauri::command]
+fn save_note_to(content: String, path: String) -> Result<(), String> {
+    notes::write_to(&path, &content)
+}
+
+#[tauri::command]
+fn load_note_from(path: String) -> Result<String, String> {
+    notes::read_from(&path)
+}
+
 #[tauri::command]
 fn get_note(app: tauri::AppHandle, id: String) -> Result<notes::Note, String> {
     notes::get(&app, &id)
@@ -740,7 +754,7 @@ fn provider_status() -> std::collections::HashMap<&'static str, bool> {
     status
 }
 
-/// Mirrors snippets::store_path — settings.json lives beside snippets.json.
+/// settings.json lives in the same app-data dir as notes.json and clipboard.json.
 fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1107,6 +1121,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(tts_pocket::TtsSidecar::new())
         .manage(GeometryQueue::default())
         .manage(Conversation::default())
@@ -1126,6 +1141,11 @@ pub fn run() {
             open_note_window,
             close_note_window,
             delete_note,
+            // File I/O for notes, from the Notepad save/open work (#1). The
+            // single Notepad it was written for is gone, but the capability
+            // moved to sticky notes rather than being dropped.
+            save_note_to,
+            load_note_from,
             list_clipboard,
             pin_clipboard_entry,
             delete_clipboard_entry,
