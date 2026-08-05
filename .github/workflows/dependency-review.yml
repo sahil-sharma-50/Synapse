@@ -26,7 +26,7 @@ jobs:
       # Drop continue-on-error then. Public repos default to on, but this one
       # has it off — verify with `gh api repos/OWNER/REPO/dependency-graph/sbom`,
       # which 404s while it is disabled.
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         continue-on-error: true
         with:
           fail-on-severity: high
