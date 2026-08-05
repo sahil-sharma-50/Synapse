@@ -68,6 +68,7 @@ Then in `.github/workflows/pr.yml`, replace the `formatting` job's Prettier chan
 - `keyring` declares a native platform store per target (plain `keyring = "3"` compiles the mock and never persists)
 - no credential-shaped field in `settings.rs`
 - the pocket-tts version and ASR download size the UI states match what Rust pins
+- the updater has a real signing pubkey, emits `.sig` artifacts, and points at this repo (each failure mode silently ships unverified or foreign installers)
 
 They are grep-shaped, which means they can rot silently — rename a const and the pattern stops matching anything while still reporting "ok". So `scripts/guards/selftest.mjs` breaks each invariant in a copy of the tree and requires the matching guard to complain. CI runs the selftest _before_ the guards. Adding a guard means adding its selftest case.
 
@@ -95,7 +96,19 @@ Windows dev workflow when `npm run tauri dev`'s own output is unreliable to capt
 
 **Clipboard history watches by polling `GetClipboardSequenceNumber`**, not `AddClipboardFormatListener` — a listener needs an HWND with a message pump, i.e. subclassing a Tauri window's wndproc, which already failed here once (WRY silently re-subclasses the overlay). Critically, `inject.rs` exposes a `ClipboardGuard` that suppresses the watcher around Synapse's own clipboard writes: `paste_text` writes _twice_ (the injected text, then the restored previous contents), so without it every dictation and paste would be logged back as things the user copied. The guard is a **counter, not a bool** (paste/copy nest in the speak-selected path) plus a 600 ms tail (the OS reports the bump asynchronously, after the function returns) plus a last-write content check.
 
-**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration, all Tauri commands and window setup), `asr.rs` (speech-to-text), `inject.rs` (text injection + clipboard-write suppression), `notes.rs` (sticky notes store), `clipboard_history.rs`, `ids.rs`, `screenshot.rs`, `sentences.rs` (speech chunking), `ai.rs`, `settings.rs`, `model_download.rs`, `tts.rs` (OS TTS fallback), `tts_setup.rs` (installs the optional local voice engine), `tts_pocket.rs` (pocket-tts sidecar protocol + audio queue).
+**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration, all Tauri commands and window setup), `asr.rs` (speech-to-text), `inject.rs` (text injection + clipboard-write suppression), `notes.rs` (sticky notes store), `clipboard_history.rs`, `ids.rs`, `screenshot.rs`, `sentences.rs` (speech chunking), `ai.rs`, `settings.rs`, `model_download.rs`, `tts.rs` (OS TTS fallback), `tts_setup.rs` (installs the optional local voice engine), `tts_pocket.rs` (pocket-tts sidecar protocol + audio queue), `updater.rs` (in-app updates).
+
+**In-app updates are `tauri-plugin-updater`, and the signature check is the whole point.** An updater downloads an executable and runs it, so it is the highest-consequence path in the app. The plugin fetches the signed `latest.json` from the endpoint in `tauri.conf.json`, verifies the installer's minisign signature against the pinned `pubkey` **before** executing anything, and installs. This was hand-rolled first — GitHub API, asset picking, manual download — and the version that reviewed badly was not the code but the trust model: byte-count validation is not integrity, and no amount of host pinning substitutes for a signature. Don't reintroduce a bespoke path here.
+
+Three ways to silently break it, all guarded (`scripts/guards/update-feed.mjs`):
+
+- **A placeholder or empty `pubkey`** ships a build whose only integrity check cannot pass. It fails open in the sense that matters — you find out long after release.
+- **`bundle.createUpdaterArtifacts: false`** produces releases with no `.sig` files, so the updater 404s on a manifest that was never generated. `.github/workflows/build.yml` deliberately turns this **off** for PR builds via `tauri.pr-build.conf.json`, because `tauri build` hard-fails without `TAURI_SIGNING_PRIVATE_KEY` and that secret must never be reachable from a fork PR. `release.yml` is the only path that signs.
+- **An endpoint pointing at the wrong repository** installs someone else's binary. This shipped once already.
+
+`updater.rs` is now just the part the plugin cannot know: `installer/hooks.nsh` drops a `.fresh-install` marker on _every_ install, upgrades included, and `run()` reads that as "show onboarding". So `download_update` leaves a `.update-pending` marker first, and `run()` consumes both to tell an upgrade from a first install — without it every update dumps a long-time user back into first-run setup.
+
+Releases go out by pushing a `v*` tag, which runs `release.yml`. The version in `package.json`, `Cargo.toml` and `tauri.conf.json` must agree, and the release must not stay a draft — the endpoint resolves through `releases/latest/download/latest.json`.
 
 **Frontend source map** (`synapse/src/`): `App.tsx` (router by window label), `Wheel.tsx` + `wedges.ts` (radial menu), `NotesHub.tsx` + `StickyNote.tsx` + `noteColors.ts`, `Clipboard.tsx`, `AiPanel.tsx` (the voice orb), `Settings.tsx` + `settings/` (per-section components), `Onboarding.tsx`, `theme.css` (the design system — every other stylesheet `@import`s it), `modelDownload.ts` (shared download-progress hook used by both onboarding and Settings → Voice), `ttsSetup.ts` (stage-aware voice-engine setup hook, same two consumers), `models.ts` (shared `Provider`/`Settings` types, model catalog, and the user-facing `ASR_MODEL`/`TTS_ENGINE` names).
 

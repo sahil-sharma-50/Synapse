@@ -1,6 +1,6 @@
 [package]
 name = "synapse"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -42,6 +42,13 @@ keyring = "3"
 rodio = "0.19"
 flate2 = "1"
 tar = "0.4"
+
+# Scoped to desktop the way the plugin documents it. The signature check that
+# gates every update lives in here rather than in this repo on purpose: this is
+# the highest-consequence code path in the app, and hand-rolled verification is
+# not something worth maintaining ourselves.
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 mockito = "1"

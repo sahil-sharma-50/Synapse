@@ -101,6 +101,30 @@ const CASES = [
     break: (edit) =>
       edit("synapse/src/models.ts", (s) => s.replace('version: "2.1.0"', 'version: "2.2.0"')),
   },
+  {
+    guard: "./update-feed.mjs",
+    what: "the update feed repointed at someone else's repository",
+    break: (edit) =>
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace("github.com/sahil-sharma-50/Synapse", "github.com/someone-else/Synapse"),
+      ),
+  },
+  {
+    guard: "./update-feed.mjs",
+    what: "the updater's signing pubkey emptied out",
+    break: (edit) =>
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace(/"pubkey": "[^"]*"/, '"pubkey": ""'),
+      ),
+  },
+  {
+    guard: "./update-feed.mjs",
+    what: "updater artifacts (and with them the .sig files) turned off",
+    break: (edit) =>
+      edit("synapse/src-tauri/tauri.conf.json", (s) =>
+        s.replace('"createUpdaterArtifacts": true', '"createUpdaterArtifacts": false'),
+      ),
+  },
 ];
 
 let failures = 0;
@@ -114,6 +138,11 @@ for (const [i, testCase] of CASES.entries()) {
     cpSync(
       join(ROOT, "synapse/src-tauri/Cargo.toml"),
       join(sandbox, "synapse/src-tauri/Cargo.toml"),
+    );
+    cpSync(join(ROOT, "synapse/package.json"), join(sandbox, "synapse/package.json"));
+    cpSync(
+      join(ROOT, "synapse/src-tauri/tauri.conf.json"),
+      join(sandbox, "synapse/src-tauri/tauri.conf.json"),
     );
 
     const edit = (rel, fn) => {

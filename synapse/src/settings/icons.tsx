@@ -19,6 +19,16 @@ export function SparkleIcon() {
   );
 }
 
+export function RefreshIcon() {
+  return (
+    <svg {...common}>
+      <path d="M20 6v4h-4" />
+      <path d="M20 10a8 8 0 10-1.5 5.8" />
+      <path d="M16 20v-4h4" />
+    </svg>
+  );
+}
+
 export function SpeakerIcon() {
   return (
     <svg {...common}>

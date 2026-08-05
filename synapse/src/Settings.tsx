@@ -5,7 +5,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import AiSection from "./settings/AiSection";
 import VoiceSection from "./settings/VoiceSection";
 import ClipboardSection from "./settings/ClipboardSection";
-import { ClipboardIcon, SparkleIcon, SpeakerIcon } from "./settings/icons";
+import UpdatesSection from "./settings/UpdatesSection";
+import { ClipboardIcon, RefreshIcon, SparkleIcon, SpeakerIcon } from "./settings/icons";
 import type { Settings as SettingsData } from "./models";
 import "./Settings.css";
 
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "ai", label: "AI", group: "AI & Agents", icon: SparkleIcon },
   { id: "voice", label: "Voice", group: "Voice", icon: SpeakerIcon },
   { id: "clipboard", label: "Clipboard", group: "Capture", icon: ClipboardIcon },
+  { id: "updates", label: "Updates", group: "About", icon: RefreshIcon },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -27,11 +29,15 @@ export default function Settings() {
   const [version, setVersion] = useState("");
 
   useEffect(() => {
-    invoke<SettingsData>("get_settings").then(setSettings).catch((e) => setError(String(e)));
+    invoke<SettingsData>("get_settings")
+      .then(setSettings)
+      .catch((e) => setError(String(e)));
   }, []);
 
   useEffect(() => {
-    getVersion().then(setVersion).catch(() => {});
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -96,6 +102,7 @@ export default function Settings() {
         {section === "ai" && <AiSection settings={settings} onChange={update} />}
         {section === "voice" && <VoiceSection settings={settings} onChange={update} />}
         {section === "clipboard" && <ClipboardSection settings={settings} onChange={update} />}
+        {section === "updates" && <UpdatesSection />}
       </main>
     </div>
   );
