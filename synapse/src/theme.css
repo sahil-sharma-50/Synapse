@@ -1,0 +1,208 @@
+/* Synapse design system — the single source of visual truth.
+ *
+ * Every window stylesheet imports this file and expresses itself in these
+ * tokens. Before it existed the same background was retyped in four files,
+ * error red existed in three different shades, and Onboarding ran a different
+ * font from every other surface. If you find yourself typing a raw hex value
+ * or a bare pixel gap in a window stylesheet, the token is missing here —
+ * add it here rather than locally.
+ *
+ * Dark is a deliberate choice, not a category habit. The overlay is a
+ * transparent window composited over whatever the user was already looking
+ * at, summoned mid-task without warning; a light surface would flash as glare
+ * every time. The utility windows follow the overlay so the app reads as one
+ * product rather than an overlay plus some dialogs.
+ */
+
+:root {
+  /* ---- Surfaces ----
+     Four steps, darkest to lightest. `bg` is a window floor, `sunken` is a
+     recessed region (sidebars, list wells), `panel` is a raised card, `raised`
+     is a panel's hover/active state. */
+  --sy-bg: #1a1a1c;
+  --sy-sunken: #151517;
+  --sy-panel: #232327;
+  --sy-raised: #2b2b30;
+
+  /* Floating surfaces sit above unknown desktop content and need more weight
+     than an in-window panel. */
+  --sy-float: #202024;
+  --sy-scrim: rgba(10, 10, 12, 0.98);
+
+  --sy-border: rgba(255, 255, 255, 0.09);
+  --sy-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---- Ink ----
+     Dim and faint are alpha-based so they tint correctly on any surface above,
+     including the coloured sticky notes. */
+  --sy-text: #eaeaea;
+  --sy-text-dim: rgba(234, 234, 234, 0.62);
+  --sy-text-faint: rgba(234, 234, 234, 0.4);
+  --sy-ink-on-accent: #0a0a0c;
+
+  /* ---- Accent ----
+     Two values with different jobs: `accent` is light enough to read as text
+     on a dark surface (>= 4.5:1), `accent-solid` is saturated enough to carry
+     dark text on top of it. Using either in the other's role fails contrast. */
+  --sy-accent: #9fcaff;
+  --sy-accent-solid: #5aaaff;
+  --sy-accent-bg: rgba(90, 170, 255, 0.16);
+  --sy-accent-line: rgba(90, 170, 255, 0.45);
+
+  /* ---- Semantic ---- */
+  --sy-ok: #7fe8a0;
+  --sy-ok-bg: rgba(90, 220, 130, 0.16);
+  --sy-warn: #ffb877;
+  --sy-warn-bg: rgba(255, 160, 80, 0.16);
+  --sy-danger: #ff8a8a;
+  --sy-danger-bg: rgba(255, 110, 110, 0.16);
+
+  /* ---- Type ----
+     Segoe UI Variable is the Windows 11 system face and is what the OS shell
+     around us uses; Text and Display are its optical sizes. The fallbacks keep
+     macOS and older Windows sane. */
+  --sy-font: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, system-ui, sans-serif;
+  --sy-font-display: "Segoe UI Variable Display", "Segoe UI Variable Text",
+    "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --sy-font-mono: "Cascadia Mono", ui-monospace, Consolas, monospace;
+
+  --sy-fs-micro: 10px;
+  --sy-fs-xs: 11px;
+  --sy-fs-sm: 12px;
+  --sy-fs-base: 13px;
+  --sy-fs-md: 15px;
+  --sy-fs-lg: 20px;
+  --sy-fs-xl: 26px;
+
+  --sy-fw-normal: 400;
+  --sy-fw-medium: 500;
+  --sy-fw-semi: 600;
+  --sy-fw-bold: 700;
+
+  --sy-lh-tight: 1.25;
+  --sy-lh-body: 1.55;
+
+  /* Display sizes need negative tracking to stop looking loose; the floor is
+     -0.04em and -0.02em usually reads better. */
+  --sy-track-tight: -0.02em;
+  --sy-track-wide: 0.07em;
+
+  /* ---- Space ----
+     A 4px base with two half-steps at the small end, where control padding
+     actually lives. Never type a raw gap; if none of these fit, the layout is
+     probably wrong. */
+  --sy-1: 2px;
+  --sy-2: 4px;
+  --sy-3: 6px;
+  --sy-4: 8px;
+  --sy-5: 12px;
+  --sy-6: 16px;
+  --sy-7: 20px;
+  --sy-8: 28px;
+  --sy-9: 40px;
+
+  /* ---- Radius ----
+     Cards land at 12-16px; pills are for small controls only. */
+  --sy-r-sm: 6px;
+  --sy-r-md: 8px;
+  --sy-r-lg: 12px;
+  --sy-r-xl: 16px;
+  --sy-r-pill: 999px;
+
+  /* ---- Elevation ----
+     Every shadow carries a real vertical offset and a soft blur; a zero-offset
+     glow is decoration, not depth. Elevation is declared ONCE per element:
+     either a border or a shadow, never both, or you get the ghost-card look. */
+  --sy-shadow-1: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --sy-shadow-2: 0 6px 18px rgba(0, 0, 0, 0.42);
+  --sy-shadow-3: 0 14px 40px rgba(0, 0, 0, 0.55);
+
+  /* ---- Motion ----
+     Exponential ease-out: fast to start, long settle. Everything animates from
+     an already-visible default so nothing pops in. */
+  --sy-dur-fast: 120ms;
+  --sy-dur-base: 190ms;
+  --sy-dur-slow: 340ms;
+  --sy-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sy-ease-in-out: cubic-bezier(0.6, 0, 0.2, 1);
+
+  --sy-focus-ring: 0 0 0 2px var(--sy-accent-solid);
+
+  --sy-content-max: 720px;
+}
+
+/* ---- Base ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  color: var(--sy-text);
+  /* Deliberately NOT setting a background here — the overlay window is
+     transparent and paints its own circle. Each window root sets its own. */
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--sy-accent-bg);
+  color: var(--sy-text);
+}
+
+/* WebView2 ships light scrollbars by default, which read as bright scars down
+   the side of every dark panel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--sy-r-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--sy-focus-ring);
+}
+
+/* Respect the OS reduced-motion setting everywhere at once. Individual
+   stylesheets should not need to repeat this. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

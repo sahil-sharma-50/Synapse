@@ -5,8 +5,11 @@ use std::path::Path;
 /// 42MB graph stub whose weights live in a separate 2.4GB
 /// `encoder-model.onnx.data`, so downloading it alone produces a model that
 /// fails to load with "External data path does not exist". The int8 encoder is
-/// self-contained (~650MB, the size the docs always quoted) and parakeet-rs
-/// resolves both of these names on its own.
+/// self-contained and parakeet-rs resolves both of these names on its own.
+///
+/// The user-facing download size lives in one place only — `ASR_MODEL.sizeLabel`
+/// in `src/models.ts`. This comment used to quote ~650MB while the UI button
+/// said ~630 MB; don't reintroduce a second number here.
 pub const MODEL_FILES: [&str; 4] = [
     "config.json",
     "decoder_joint-model.int8.onnx",

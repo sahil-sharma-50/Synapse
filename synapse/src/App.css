@@ -1,9 +1,15 @@
-html, body, #root {
-  margin: 0;
+@import "./theme.css";
+
+/* The overlay window. Transparent, undecorated, always-on-top, summoned at the
+   cursor over arbitrary desktop content — so everything here has to read
+   against an unknown background and the window's own corners must stay fully
+   transparent (clicking them dismisses). */
+
+html,
+body,
+#root {
   padding: 0;
   width: 100%;
-  height: 100%;
-  background: transparent;
   overflow: hidden;
 }
 
@@ -14,16 +20,18 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--sy-font);
   cursor: default;
   user-select: none;
-  animation: overlay-in 120ms ease-out;
+  animation: overlay-in var(--sy-dur-base) var(--sy-ease-out);
 }
 
+/* Scale from near-full size, not from nothing: the wheel should feel like it
+   was already there and snapped into focus, not like it grew. */
 @keyframes overlay-in {
   from {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.94);
   }
   to {
     opacity: 1;
@@ -31,21 +39,24 @@ html, body, #root {
   }
 }
 
-svg {
+.overlay-root svg {
   outline: none;
   /* Keep total extent (offset + blur) under the margin between R_OUTER and
      SIZE/2, or the shadow clips at the window edge and looks boxy. */
-  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
 }
-svg * {
+
+.overlay-root svg * {
   outline: none;
 }
+
+/* ---- Wedges ---- */
 
 .wedge-slice {
   fill: rgba(24, 24, 26, 0.96);
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 0.75;
-  transition: fill 140ms ease;
+  transition: fill var(--sy-dur-fast) var(--sy-ease-out);
 }
 
 .wedge {
@@ -59,7 +70,7 @@ svg * {
 
 .wedge-icon path {
   fill: rgba(235, 235, 240, 0.8);
-  transition: fill 140ms ease;
+  transition: fill var(--sy-dur-fast) var(--sy-ease-out);
   pointer-events: none;
 }
 
@@ -73,10 +84,18 @@ svg * {
   fill: rgba(220, 50, 50, 0.75);
 }
 
+/* ---- Hub ----
+   Doubles as the drag handle, hence `grab`. Radius must match R_INNER exactly
+   in Wheel.tsx or a ring of desktop wallpaper shows through the gap. */
+
 .hub-circle {
-  fill: rgba(10, 10, 12, 0.98);
+  fill: var(--sy-scrim);
   stroke: none;
-  cursor: pointer;
+  cursor: grab;
+}
+
+.hub-circle:active {
+  cursor: grabbing;
 }
 
 .hub-label {
@@ -84,40 +103,42 @@ svg * {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--sy-2);
   pointer-events: none;
-  color: #f0f0f0;
+  color: var(--sy-text);
   text-align: center;
-  max-width: 96px;
+  max-width: 104px;
 }
 
 .hub-title {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+  line-height: var(--sy-lh-tight);
 }
 
 .hub-hint {
   font-size: 9px;
-  opacity: 0.5;
+  color: var(--sy-text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* ---- Status circle ----
+   Shared shell for listening / speaking / toast / error. */
 
 .status-circle {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 190px;
-  height: 190px;
-  padding: 0 26px;
-  box-sizing: border-box;
+  gap: var(--sy-4);
+  width: 210px;
+  height: 210px;
+  padding: 0 var(--sy-7);
   border-radius: 50%;
-  background: rgba(10, 10, 12, 0.98);
-  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5));
-  color: #f0f0f0;
+  background: var(--sy-scrim);
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+  color: var(--sy-text);
   text-align: center;
 }
 
@@ -126,61 +147,121 @@ svg * {
 }
 
 .status-title {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+  line-height: var(--sy-lh-tight);
 }
 
 .status-detail {
-  font-size: 10px;
-  opacity: 0.6;
+  font-size: var(--sy-fs-micro);
+  color: var(--sy-text-faint);
   line-height: 1.35;
   word-break: break-word;
 }
 
 .status-circle-error .status-title {
-  color: #ff9a9a;
+  color: var(--sy-danger);
 }
 
 .status-check {
   width: 30px;
   height: 30px;
   fill: none;
-  stroke: rgba(120, 220, 150, 0.95);
+  stroke: var(--sy-ok);
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+  /* Draws itself on. 46 is comfortably over the path length, so the dash fully
+     clears the stroke before animating in. */
+  stroke-dasharray: 46;
+  stroke-dashoffset: 46;
+  animation: status-check-draw var(--sy-dur-slow) var(--sy-ease-out) forwards;
 }
 
-.listening-dots {
+@keyframes status-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The screenshot toast names a file path, so it gets a wider measure and a
+   monospace-ish treatment for the filename line. */
+.status-path {
+  font-size: var(--sy-fs-micro);
+  color: var(--sy-text-dim);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.status-action {
+  margin-top: var(--sy-1);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sy-accent);
+}
+
+/* ---- Live level meter ----
+   Replaces the three fake pulsing dots. These bars are driven by real RMS from
+   the microphone, so a silent room visibly reads as silent — which is the
+   whole point once dictation no longer stops on its own. */
+
+.level-meter {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 20px;
+  justify-content: center;
+  gap: 4px;
+  height: 34px;
 }
 
-.listening-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(90, 170, 255, 0.9);
-  animation: listening-pulse 1s ease-in-out infinite;
+.level-bar {
+  width: 4px;
+  min-height: 4px;
+  border-radius: var(--sy-r-pill);
+  background: var(--sy-accent-solid);
+  /* Height is set inline from the live level; the transition keeps it from
+     jittering frame to frame. */
+  transition: height 90ms var(--sy-ease-out);
 }
 
-.listening-dot:nth-child(2) {
-  animation-delay: 0.15s;
-}
-.listening-dot:nth-child(3) {
-  animation-delay: 0.3s;
+/* Waiting for the first sound: a slow sweep so the meter never looks frozen. */
+.level-meter-idle .level-bar {
+  animation: level-idle 1.4s var(--sy-ease-in-out) infinite;
 }
 
-@keyframes listening-pulse {
-  0%, 60%, 100% {
-    transform: scale(0.6);
-    opacity: 0.4;
+.level-meter-idle .level-bar:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.level-meter-idle .level-bar:nth-child(3) {
+  animation-delay: 0.24s;
+}
+.level-meter-idle .level-bar:nth-child(4) {
+  animation-delay: 0.36s;
+}
+.level-meter-idle .level-bar:nth-child(5) {
+  animation-delay: 0.48s;
+}
+
+@keyframes level-idle {
+  0%,
+  100% {
+    height: 5px;
+    opacity: 0.35;
   }
-  30% {
-    transform: scale(1.15);
-    opacity: 1;
+  50% {
+    height: 13px;
+    opacity: 0.75;
   }
+}
+
+.status-timer {
+  font-size: var(--sy-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--sy-text-dim);
+}
+
+.status-warn {
+  font-size: 9px;
+  color: var(--sy-warn);
+  line-height: 1.35;
 }

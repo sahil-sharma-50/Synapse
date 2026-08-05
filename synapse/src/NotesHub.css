@@ -1,0 +1,259 @@
+@import "./theme.css";
+
+/* The notes index. Deliberately not an editor — editing happens in each note's
+   own floating window, so this surface only has to answer "what do I have and
+   which one do I want". Each row carries its note's colour on a slim edge so
+   the list and the desk read as the same objects. */
+
+.hub-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--sy-bg);
+  color: var(--sy-text);
+  font-family: var(--sy-font);
+  font-size: var(--sy-fs-base);
+  overflow: hidden;
+}
+
+.hub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sy-4);
+  flex-shrink: 0;
+  padding: var(--sy-6) var(--sy-5) var(--sy-5);
+  border-bottom: 1px solid var(--sy-border);
+}
+
+.hub-title {
+  margin: 0;
+  font-family: var(--sy-font-display);
+  font-size: var(--sy-fs-lg);
+  font-weight: var(--sy-fw-semi);
+  letter-spacing: var(--sy-track-tight);
+}
+
+.hub-new {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-3);
+  padding: var(--sy-3) var(--sy-5);
+  border: none;
+  border-radius: var(--sy-r-md);
+  background: var(--sy-accent-solid);
+  color: var(--sy-ink-on-accent);
+  font-family: inherit;
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+  cursor: pointer;
+  transition: filter var(--sy-dur-fast) var(--sy-ease-out),
+    transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.hub-new svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.hub-new:hover {
+  filter: brightness(1.1);
+}
+
+.hub-new:active {
+  transform: translateY(1px);
+}
+
+/* ---- List ---- */
+
+.hub-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sy-4) var(--sy-4) var(--sy-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sy-3);
+}
+
+.hub-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-4);
+  padding: var(--sy-4) var(--sy-4) var(--sy-4) var(--sy-5);
+  border-radius: var(--sy-r-lg);
+  background: var(--sy-panel);
+  cursor: pointer;
+  outline: none;
+  /* Elevation declared once: a background, no border under a shadow. The
+     colour identity rides on the inset edge below rather than a border. */
+  box-shadow: inset 3px 0 0 var(--hub-accent);
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.hub-item:hover {
+  background: var(--sy-raised);
+}
+
+.hub-item:active {
+  transform: scale(0.995);
+}
+
+.hub-item:focus-visible {
+  box-shadow: inset 3px 0 0 var(--hub-accent), var(--sy-focus-ring);
+}
+
+.hub-item-amber {
+  --hub-accent: #f0c46a;
+}
+.hub-item-rose {
+  --hub-accent: #f0879c;
+}
+.hub-item-sky {
+  --hub-accent: #7cc4f5;
+}
+.hub-item-mint {
+  --hub-accent: #7fdcaa;
+}
+.hub-item-slate {
+  --hub-accent: #a9b4c4;
+}
+
+.hub-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.hub-item-title {
+  font-size: var(--sy-fs-base);
+  font-weight: var(--sy-fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-item-preview {
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-2);
+  font-size: var(--sy-fs-xs);
+  color: var(--sy-text-faint);
+}
+
+.hub-open-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sy-ok);
+}
+
+.hub-item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sy-2);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.hub-item:hover .hub-item-actions,
+.hub-item:focus-within .hub-item-actions {
+  opacity: 1;
+}
+
+.hub-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: transparent;
+  color: var(--sy-text-faint);
+  cursor: pointer;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.hub-icon-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hub-icon-btn:hover {
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+}
+
+.hub-text-btn {
+  padding: var(--sy-2) var(--sy-4);
+  border: none;
+  border-radius: var(--sy-r-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sy-text-dim);
+  font-family: inherit;
+  font-size: var(--sy-fs-xs);
+  cursor: pointer;
+  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+    color var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.hub-text-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--sy-text);
+}
+
+.hub-text-btn-danger {
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+  font-weight: var(--sy-fw-semi);
+}
+
+.hub-text-btn-danger:hover {
+  background: rgba(255, 110, 110, 0.28);
+  color: var(--sy-danger);
+}
+
+/* ---- Empty ---- */
+
+.hub-empty {
+  padding: var(--sy-9) var(--sy-6);
+  text-align: center;
+}
+
+.hub-empty-title {
+  margin: 0 0 var(--sy-3);
+  font-size: var(--sy-fs-md);
+  font-weight: var(--sy-fw-semi);
+}
+
+.hub-empty-body {
+  margin: 0 auto;
+  max-width: 40ch;
+  font-size: var(--sy-fs-sm);
+  color: var(--sy-text-dim);
+  line-height: var(--sy-lh-body);
+}

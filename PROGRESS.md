@@ -1,5 +1,49 @@
 # Synapse — Session Handoff
 
+## UX/UI overhaul (2026-08-02) — READ THIS FIRST, it changed a lot
+
+Eight requested UX changes, planned at
+`C:\Users\sahil\.claude\plans\use-impeccable-and-grill-me-spicy-perlis.md`.
+**Automated-verified only** (`npx tsc --noEmit`, `npm run build`, `cargo build`,
+`cargo test --lib` → 71 pass, zero warnings; app launches and stays up with the
+ASR model loaded and no panics). **No manual click-through has been done yet** —
+everything in the plan's Verification section is still outstanding.
+
+What changed structurally:
+
+1. **`theme.css` is new and is now the design system.** Every window stylesheet
+   `@import`s it. See `DESIGN.md`.
+2. **Dictation no longer auto-stops.** Enter or click the circle. Silence-stop is
+   now `settings.voice.auto_stop_on_silence`, default **off**. `MAX_RECORD_MS` is
+   5 min (runaway guard). New `dictation-tick` event drives a live level meter +
+   timer.
+3. **The wheel drags by its centre hub** (`start_overlay_drag`). Position never
+   persists. The `GetAsyncKeyState` guard in that command is load-bearing — see
+   its doc comment.
+4. **Snippets are gone; Clipboard history replaces them.** `snippets.rs` deleted,
+   `clipboard_history.rs` added; old `snippets.json` auto-migrates to pinned
+   entries and the file is renamed `.migrated`, never deleted. Window label
+   `snippet-picker` → `clipboard`. **Privacy: history is persisted to disk and
+   will contain passwords** — the product owner chose this with the tradeoff
+   stated; the off switch and Clear are the mitigation.
+5. **Notepad → sticky notes, one OS window per note.** `notepad.txt`
+   auto-migrates to note #1 (renamed, never deleted). Notes hub at `notes-hub`,
+   notes at `note-<id>` via a capability glob.
+6. **The AI panel is now a voice orb**, undecorated + transparent, with real
+   multi-turn history (Rust-side `Conversation`, 20-turn cap) and
+   sentence-streamed audio so speech starts before generation finishes.
+7. Screenshot toast dwells 3.4s, is click-to-reveal and dismissible early.
+8. Settings names the actual model/engine (`ASR_MODEL`, `TTS_ENGINE` in
+   `models.ts`) and gained a Clipboard section.
+
+**Still unverified / known risk:** pocket-tts playback has *never* been observed
+on real hardware, and this work rewrote exactly that code path
+(`tts_pocket.rs` now queues clips on one long-lived sink). If audio misbehaves,
+establish whether the pre-existing single-shot path worked first — otherwise an
+old failure is indistinguishable from a new one.
+
+---
+
 **Last updated:** 2026-08-02
 **Status:** M0–M4 complete and manually verified on Windows. M5 sub-project A (Settings
 foundation + AI section) is built and automated-verified (build/typecheck/tests all clean);

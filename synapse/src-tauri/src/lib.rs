@@ -1,10 +1,12 @@
 mod ai;
 mod asr;
+mod clipboard_history;
+mod ids;
 mod inject;
 mod model_download;
 mod notes;
 mod screenshot;
-mod snippets;
+mod sentences;
 mod settings;
 mod tts;
 mod tts_pocket;
@@ -18,8 +20,16 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const OVERLAY_LABEL: &str = "overlay";
-const NOTEPAD_LABEL: &str = "notepad";
-const SNIPPET_LABEL: &str = "snippet-picker";
+/// The notes list. Individual sticky notes are separate windows labelled
+/// `note-<id>`; note that "notes-hub" deliberately does NOT start with "note-"
+/// (it's "notes-", with the s), so the frontend's prefix routing and the
+/// `note-*` capability glob can't accidentally match it. One character apart.
+const NOTES_HUB_LABEL: &str = "notes-hub";
+const NOTE_LABEL_PREFIX: &str = "note-";
+/// Renamed from "snippet-picker" when the feature became a real clipboard
+/// history. The label appears in capabilities/default.json's window allowlist —
+/// changing one without the other silently kills all IPC in this window.
+const CLIPBOARD_LABEL: &str = "clipboard";
 const AI_LABEL: &str = "ai-panel";
 const SETTINGS_LABEL: &str = "settings";
 const ONBOARDING_LABEL: &str = "onboarding";
@@ -147,30 +157,35 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
             let app = app.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(180));
-                let message = match screenshot::capture(&app, cursor) {
+                let toast = match screenshot::capture(&app, cursor) {
                     Ok(path) => {
                         println!("[synapse] screenshot saved to {}", path.display());
                         let name = path
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
-                        format!("Saved to Pictures\u{2044}Synapse\n{name}")
+                        Toast {
+                            title: "Screenshot saved".into(),
+                            detail: format!("Pictures\\Synapse\\{name}"),
+                            path: Some(path.to_string_lossy().to_string()),
+                            tone: ToastTone::Ok,
+                        }
                     }
                     Err(e) => {
                         eprintln!("[synapse] screenshot failed: {e}");
-                        format!("Screenshot failed: {e}")
+                        Toast::error("Screenshot failed", e)
                     }
                 };
-                show_toast(&app, message);
+                show_toast(&app, toast);
             });
         }
         "notepad" => {
             hide_overlay(&app);
-            show_utility_window(&app, NOTEPAD_LABEL);
+            show_utility_window(&app, NOTES_HUB_LABEL);
         }
-        "snippet" => {
+        "clipboard" => {
             hide_overlay(&app);
-            show_utility_window(&app, SNIPPET_LABEL);
+            show_utility_window(&app, CLIPBOARD_LABEL);
         }
         "ai" => {
             hide_overlay(&app);
@@ -193,10 +208,16 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
                     Ok(Some(text)) => {
                         speak_text(app.clone(), text);
                     }
-                    Ok(None) => show_toast(&app, "No text selected".to_string()),
+                    Ok(None) => show_toast(
+                        &app,
+                        Toast::error("Nothing selected", "Select some text first, then try again"),
+                    ),
                     Err(e) => {
                         eprintln!("[synapse] selection capture failed: {e}");
-                        show_toast(&app, "Couldn't read selected text".to_string());
+                        show_toast(
+                            &app,
+                            Toast::error("Couldn't read the selection", "Try copying it manually"),
+                        );
                     }
                 }
             });
@@ -211,14 +232,101 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
 /// Briefly re-shows the overlay as a confirmation message, so actions that
 /// otherwise happen invisibly (screenshot) give the user feedback that they
 /// actually fired. Blocking — call from a background thread.
-fn show_toast(app: &tauri::AppHandle, message: String) {
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ToastTone {
+    Ok,
+    Error,
+}
+
+/// A toast used to be a single `\n`-joined string the frontend split apart.
+/// It carries a file path now (so the screenshot toast can reveal what it just
+/// saved) and a tone, neither of which survives string-splitting.
+#[derive(Clone, serde::Serialize)]
+struct Toast {
+    title: String,
+    detail: String,
+    path: Option<String>,
+    tone: ToastTone,
+}
+
+impl Toast {
+    fn error(title: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            detail: detail.into(),
+            path: None,
+            tone: ToastTone::Error,
+        }
+    }
+}
+
+/// Opens the folder containing `path` with the file selected. Called from the
+/// screenshot toast, which names a file the user may well want to go look at.
+#[tauri::command]
+fn reveal_path(app: tauri::AppHandle, path: String) {
+    use tauri_plugin_opener::OpenerExt;
+    // Called through the plugin's Rust API rather than its JS command, so the
+    // narrow `opener:allow-open-url` allowlist in capabilities/default.json
+    // (deliberately ms-settings: only) doesn't need widening to every path.
+    if let Err(e) = app.opener().reveal_item_in_dir(&path) {
+        eprintln!("[synapse] could not reveal {path}: {e}");
+    }
+}
+
+fn show_toast(app: &tauri::AppHandle, message: Toast) {
+    /// The old 1500 ms was long enough to notice a flash and too short to read
+    /// where the file went, which is the entire content of the message. Long
+    /// enough to read a path, short enough not to feel stuck.
+    const TOAST_DWELL_MS: u64 = 3400;
+
     let _ = app.emit("toast", message);
     // Let the webview render the toast state before the window is shown,
     // otherwise the wheel flashes for a frame first.
     std::thread::sleep(std::time::Duration::from_millis(60));
     show_overlay_at_cursor(app);
-    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    // Poll rather than sleeping the whole dwell in one go: the toast is
+    // click- and Esc-dismissible, and once the user has dismissed it this
+    // thread must stop owning the window — otherwise it would sit here for
+    // seconds and then "helpfully" hide a wheel the user had since reopened.
+    let window = app.get_webview_window(OVERLAY_LABEL);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(TOAST_DWELL_MS);
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        if let Some(w) = &window {
+            if !w.is_visible().unwrap_or(true) {
+                return; // dismissed early; whoever hid it also restored focus
+            }
+        }
+    }
     hide_overlay(app);
+}
+
+/// Starts an OS-native window drag of the overlay, so the wheel can be moved
+/// by its centre hub.
+///
+/// Driven from Rust rather than the webview's own `startDragging()` for one
+/// reason: `invoke` is asynchronous, so on a fast click-and-flick the drag
+/// request can arrive *after* the mouse button is already up. Windows then
+/// enters a modal move loop with no button held and the window follows the
+/// cursor until the next click — a genuinely stuck state. Re-checking the
+/// physical button here, immediately before handing off to the OS, closes
+/// that window.
+#[tauri::command]
+fn start_overlay_drag(app: tauri::AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+        // High bit set == currently down.
+        let down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000 != 0;
+        if !down {
+            return;
+        }
+    }
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = window.start_dragging();
+    }
 }
 
 /// Failures here are reported rather than swallowed: a window that silently
@@ -271,39 +379,257 @@ fn show_utility_window(app: &tauri::AppHandle, label: &str) {
     }
 }
 
+fn note_label(id: &str) -> String {
+    format!("{NOTE_LABEL_PREFIX}{id}")
+}
+
+/// Pending note geometry, flushed on a timer. `Moved` fires once per pixel
+/// during a drag, so writing notes.json on every event would hammer the disk;
+/// one shared map plus one flush thread avoids both that and a thread per note.
+#[derive(Default)]
+struct GeometryQueue(std::sync::Mutex<std::collections::HashMap<String, (i32, i32, u32, u32)>>);
+
+fn queue_geometry(app: &tauri::AppHandle, id: &str, window: &tauri::WebviewWindow) {
+    let (Ok(pos), Ok(size)) = (window.outer_position(), window.inner_size()) else {
+        return;
+    };
+    // Read the window rather than trusting the event payload, so a Moved and a
+    // Resized event each yield a complete tuple.
+    if let Ok(mut pending) = app.state::<GeometryQueue>().0.lock() {
+        pending.insert(id.to_string(), (pos.x, pos.y, size.width, size.height));
+    }
+}
+
+fn flush_geometry(app: &tauri::AppHandle) {
+    let pending: Vec<(String, (i32, i32, u32, u32))> = {
+        let state = app.state::<GeometryQueue>();
+        let Ok(mut map) = state.0.lock() else { return };
+        map.drain().collect()
+    };
+    for (id, (x, y, w, h)) in pending {
+        if let Err(e) = notes::update_geometry(app, &id, x, y, w, h) {
+            eprintln!("[synapse] could not save note geometry: {e}");
+        }
+    }
+}
+
+/// Keeps a note on a monitor that actually exists. A note last saved on a
+/// second display that has since been unplugged would otherwise reopen at
+/// coordinates nothing can reach, and be permanently invisible.
+fn position_is_visible(app: &tauri::AppHandle, x: i32, y: i32) -> bool {
+    let Ok(monitors) = app.available_monitors() else {
+        return false;
+    };
+    monitors.iter().any(|m| {
+        let p = m.position();
+        let s = m.size();
+        // Require a decent slice of the title bar to be on-screen, not just the
+        // last pixel of a corner.
+        x + 80 >= p.x
+            && x <= p.x + s.width as i32 - 40
+            && y >= p.y
+            && y <= p.y + s.height as i32 - 40
+    })
+}
+
+/// Opens (or focuses) the window for one note.
+///
+/// Note windows are DESTROYED on close rather than hidden — the one deliberate
+/// exception to this codebase's "utility windows hide, they don't close" rule.
+/// That rule exists because `show()` on a destroyed window is a silent no-op,
+/// which only matters for windows summoned by a *fixed* label. Notes are
+/// rebuilt by label on demand and there are N of them, so hiding would leak a
+/// live webview for every note ever opened. The `get_webview_window` guard
+/// below is what makes destroy-and-rebuild safe: Tauri panics on a duplicate
+/// window label.
 #[tauri::command]
-fn load_note(app: tauri::AppHandle) -> Result<String, String> {
-    notes::read(&app)
+fn open_note_window(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let label = note_label(&id);
+    if let Some(existing) = app.get_webview_window(&label) {
+        show_foreground(&existing);
+        return Ok(());
+    }
+
+    let note = notes::get(&app, &id)?;
+    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title(note.title())
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .min_inner_size(220.0, 160.0)
+        // Built hidden so the saved geometry is applied before the first paint,
+        // rather than the note visibly jumping from the default position.
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let _ = window.set_size(tauri::PhysicalSize::new(note.w, note.h));
+    match (note.x, note.y) {
+        (Some(x), Some(y)) if position_is_visible(&app, x, y) => {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        _ => {
+            let _ = window.center();
+        }
+    }
+
+    notes::set_open(&app, &id, true)?;
+
+    let ev_app = app.clone();
+    let ev_window = window.clone();
+    let ev_id = id.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+            queue_geometry(&ev_app, &ev_id, &ev_window);
+        }
+        tauri::WindowEvent::CloseRequested { .. } => {
+            // No prevent_close: see the doc comment above. Flush first, because
+            // after this the webview is gone and its pending debounce with it.
+            queue_geometry(&ev_app, &ev_id, &ev_window);
+            flush_geometry(&ev_app);
+            let _ = notes::set_open(&ev_app, &ev_id, false);
+            let _ = ev_app.emit("notes-changed", ());
+        }
+        _ => {}
+    });
+
+    show_foreground(&window);
+    let _ = app.emit("notes-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
-fn save_note(app: tauri::AppHandle, content: String) -> Result<(), String> {
-    notes::write(&app, &content)
+fn list_notes(app: tauri::AppHandle) -> Result<Vec<NoteSummary>, String> {
+    Ok(notes::list(&app)?
+        .into_iter()
+        .map(|n| NoteSummary {
+            title: n.title(),
+            preview: n
+                .content
+                .lines()
+                .skip_while(|l| l.trim().is_empty())
+                .skip(1)
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect(),
+            id: n.id,
+            color: n.color,
+            open: n.open,
+            updated_at: n.updated_at,
+        })
+        .collect())
+}
+
+/// The hub only needs a title and a preview, and the notes could collectively
+/// be megabytes of text — no reason to ship all of it to the list window.
+#[derive(serde::Serialize)]
+struct NoteSummary {
+    id: String,
+    title: String,
+    preview: String,
+    color: String,
+    open: bool,
+    updated_at: i64,
 }
 
 #[tauri::command]
-fn list_snippets(app: tauri::AppHandle) -> Result<Vec<snippets::Snippet>, String> {
-    snippets::list(&app)
+fn get_note(app: tauri::AppHandle, id: String) -> Result<notes::Note, String> {
+    notes::get(&app, &id)
 }
 
 #[tauri::command]
-fn add_snippet(app: tauri::AppHandle, name: String, content: String) -> Result<snippets::Snippet, String> {
-    println!("[synapse] add_snippet: name={name:?} content={content:?}");
-    snippets::add(&app, name, content)
+fn create_note(app: tauri::AppHandle, color: Option<String>) -> Result<String, String> {
+    let note = notes::create(&app, color)?;
+    open_note_window(app, note.id.clone())?;
+    Ok(note.id)
 }
 
 #[tauri::command]
-fn delete_snippet(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    snippets::delete(&app, &id)
+fn save_note_content(app: tauri::AppHandle, id: String, content: String) -> Result<(), String> {
+    notes::update_content(&app, &id, content)?;
+    // Keeps the undecorated window's own title (used in the taskbar/alt-tab)
+    // and the hub list in step with the first line as it's typed.
+    if let Some(window) = app.get_webview_window(&note_label(&id)) {
+        if let Ok(note) = notes::get(&app, &id) {
+            let _ = window.set_title(&note.title());
+        }
+    }
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn set_note_color(app: tauri::AppHandle, id: String, color: String) -> Result<(), String> {
+    notes::update_color(&app, &id, color)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn close_note_window(app: tauri::AppHandle, id: String) {
+    // Routed through Rust rather than the webview closing itself, so the flush
+    // and the `open: false` write happen in a defined order before teardown.
+    if let Some(window) = app.get_webview_window(&note_label(&id)) {
+        let _ = window.close();
+    }
+}
+
+#[tauri::command]
+fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(&note_label(&id)) {
+        let _ = window.destroy();
+    }
+    // Drop any queued geometry first, or the flush thread would resurrect a
+    // row for the note we just deleted.
+    if let Ok(mut pending) = app.state::<GeometryQueue>().0.lock() {
+        pending.remove(&id);
+    }
+    notes::delete(&app, &id)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn list_clipboard(app: tauri::AppHandle) -> Result<Vec<clipboard_history::ClipEntry>, String> {
+    clipboard_history::list(&app)
+}
+
+#[tauri::command]
+fn pin_clipboard_entry(app: tauri::AppHandle, id: String, pinned: bool) -> Result<(), String> {
+    clipboard_history::set_pinned(&app, &id, pinned)
+}
+
+#[tauri::command]
+fn delete_clipboard_entry(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    clipboard_history::delete(&app, &id)
+}
+
+/// Clears auto-captured history only. Pinned entries were saved deliberately,
+/// so a "clear history" that also destroyed them would be a nasty surprise.
+#[tauri::command]
+fn clear_clipboard_history(app: tauri::AppHandle) -> Result<(), String> {
+    clipboard_history::clear_history(&app)
+}
+
+#[tauri::command]
+fn add_pinned_clip(
+    app: tauri::AppHandle,
+    name: String,
+    content: String,
+) -> Result<clipboard_history::ClipEntry, String> {
+    clipboard_history::add_pinned(&app, name, content)
 }
 
 /// Restores focus to the app the user was in before the wheel/picker opened
-/// (captured back when the overlay was first shown) and pastes the snippet
+/// (captured back when the overlay was first shown) and pastes the entry
 /// there — same clipboard paste-and-restore path as dictation (PRD §4.4).
+/// Routing through `inject::paste_text` means the history watcher suppresses
+/// this write for free rather than logging it back as a fresh copy.
 #[tauri::command]
-fn insert_snippet(app: tauri::AppHandle, content: String) {
-    println!("[synapse] insert_snippet: {content:?}");
-    if let Some(window) = app.get_webview_window(SNIPPET_LABEL) {
+fn insert_clip(app: tauri::AppHandle, content: String) {
+    if let Some(window) = app.get_webview_window(CLIPBOARD_LABEL) {
         let _ = window.hide();
     }
 
@@ -315,7 +641,7 @@ fn insert_snippet(app: tauri::AppHandle, content: String) {
         #[cfg(target_os = "windows")]
         restore_previous_focus();
         if let Err(e) = inject::paste_text(&app, &content) {
-            eprintln!("[synapse] snippet paste failed: {e}");
+            eprintln!("[synapse] clipboard paste failed: {e}");
         }
     });
 }
@@ -325,6 +651,25 @@ fn insert_snippet(app: tauri::AppHandle, content: String) {
 /// stays visible (in "listening" mode, driven by the `dictation-listening`
 /// event the caller emits beforehand) until this finishes, so the user has
 /// something to look at while recording instead of the wheel just vanishing.
+/// Live recording state, pushed to the overlay ~20x/second. Without this the
+/// listening circle is a static animation that looks identical whether the
+/// microphone is working or not — tolerable when recording auto-stopped after
+/// 900 ms of silence, unacceptable now that it runs until the user says stop.
+#[derive(Clone, serde::Serialize)]
+struct DictationTick {
+    level: f32,
+    elapsed_ms: u64,
+    heard_speech: bool,
+}
+
+/// Whether dictation should end itself on trailing silence. Off by default —
+/// see `settings::VoiceSettings`.
+fn auto_stop_enabled(app: &tauri::AppHandle) -> bool {
+    settings_path(app)
+        .map(|p| settings::load(&p).voice.auto_stop_on_silence)
+        .unwrap_or(false)
+}
+
 fn spawn_recording(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         println!("[synapse] dictation: recording started");
@@ -338,7 +683,20 @@ fn spawn_recording(app: tauri::AppHandle) {
             hide_overlay(&app);
         };
 
-        match asr::record_and_transcribe() {
+        let auto_stop = auto_stop_enabled(&app);
+        let tick_app = app.clone();
+        let on_tick = move |t: asr::Tick| {
+            let _ = tick_app.emit(
+                "dictation-tick",
+                DictationTick {
+                    level: t.level,
+                    elapsed_ms: t.elapsed_ms,
+                    heard_speech: t.heard_speech,
+                },
+            );
+        };
+
+        match asr::record_and_transcribe(auto_stop, on_tick) {
             Ok(text) if !text.trim().is_empty() => {
                 println!("[synapse] dictation: transcribed \"{text}\"");
                 hide_overlay(&app);
@@ -466,8 +824,14 @@ fn download_tts_engine(app: tauri::AppHandle) {
 /// fail Tauri's argument deserialization before this function body ever runs
 /// — leaving `streaming` stuck `true` client-side with no `ai-done`/`ai-error`
 /// event to clear it. Resolving server-side eliminates that case entirely.
+///
+/// `speak` is an explicit argument rather than something the backend infers,
+/// because it is a per-conversation UI toggle. NOTE: adding it changed this
+/// command's signature — `AiPanel.tsx` is the only call site and had to change
+/// in the same commit, or Tauri's argument deserialization fails before this
+/// body runs, which is exactly the stuck-`streaming` failure described above.
 #[tauri::command]
-fn send_ai_message(app: tauri::AppHandle, prompt: String) {
+fn send_ai_message(app: tauri::AppHandle, prompt: String, speak: bool) {
     std::thread::spawn(move || {
         let path = match settings_path(&app) {
             Ok(path) => path,
@@ -485,24 +849,154 @@ fn send_ai_message(app: tauri::AppHandle, prompt: String) {
             }
         };
         let model = ai_settings.model_for(provider).to_string();
-        match ai::stream_chat(&app, provider, &model, &prompt) {
+
+        let history = {
+            let state = app.state::<Conversation>();
+            let mut turns = state.0.lock().expect("conversation lock");
+            turns.push(("user".to_string(), prompt.clone()));
+            trim_conversation(&mut turns);
+            turns.clone()
+        };
+
+        // Decided once, before the first delta: whether the local engine can
+        // stream. Without it the honest fallback is the old behaviour — speak
+        // the whole reply at the end via the OS voice.
+        let stream_audio = speak && tts_setup::is_ready(&app);
+        let voice_paths = if stream_audio { resolve_voice_paths(&app) } else { None };
+        let stream_audio = stream_audio && voice_paths.is_some();
+
+        let sidecar = app.state::<tts_pocket::TtsSidecar>();
+        let generation = stream_audio.then(|| sidecar.begin_utterance());
+        let mut splitter = sentences::SentenceSplitter::new();
+
+        let mut on_delta = |chunk: &str| {
+            let (Some(generation), Some(paths)) = (generation, voice_paths.as_ref()) else {
+                return;
+            };
+            for sentence in splitter.push(chunk) {
+                sidecar.enqueue(paths.job(generation, sentence));
+            }
+        };
+
+        match ai::stream_chat(&app, provider, &model, &history, &mut on_delta) {
             Ok(text) => {
+                if let (Some(generation), Some(paths)) = (generation, voice_paths.as_ref()) {
+                    if let Some(tail) = splitter.finish() {
+                        sidecar.enqueue(paths.job(generation, tail));
+                    }
+                    sidecar.end_utterance(generation);
+                } else if speak && !text.trim().is_empty() {
+                    // No local engine: one OS-voice utterance at the end.
+                    speak_text(app.clone(), text.clone());
+                }
+
+                {
+                    let state = app.state::<Conversation>();
+                    let mut turns = state.0.lock().expect("conversation lock");
+                    turns.push(("assistant".to_string(), text.clone()));
+                    trim_conversation(&mut turns);
+                }
                 let _ = app.emit("ai-done", text);
             }
             Err(e) => {
                 eprintln!("[synapse] AI request failed: {e}");
+                // Drop the unanswered user turn, so a retry doesn't send the
+                // same question twice in the history.
+                {
+                    let state = app.state::<Conversation>();
+                    let mut turns = state.0.lock().expect("conversation lock");
+                    turns.pop();
+                }
+                if generation.is_some() {
+                    sidecar.stop(); // clears the orb's speaking state
+                }
                 let _ = app.emit("ai-error", e);
             }
         }
     });
 }
 
+/// The running conversation, owned in Rust so the orb, the AI panel and any
+/// future caller all see the same history. Previously neither side kept any:
+/// every question was independent.
+#[derive(Default)]
+struct Conversation(std::sync::Mutex<Vec<(String, String)>>);
+
+/// Each turn is re-sent in full on every request, so an unbounded history means
+/// a bill that grows without limit. Oldest turns fall off in user/assistant
+/// pairs, so the remaining history never starts mid-exchange.
+const MAX_CONVERSATION_TURNS: usize = 20;
+
+fn trim_conversation(turns: &mut Vec<(String, String)>) {
+    while turns.len() > MAX_CONVERSATION_TURNS {
+        turns.remove(0);
+    }
+    // Never leave an assistant message first — some APIs reject it.
+    while turns.first().is_some_and(|(role, _)| role == "assistant") {
+        turns.remove(0);
+    }
+}
+
+#[tauri::command]
+fn clear_conversation(app: tauri::AppHandle) {
+    if let Ok(mut turns) = app.state::<Conversation>().0.lock() {
+        turns.clear();
+    }
+}
+
+/// Everything the synthesis worker needs, resolved once per utterance rather
+/// than per sentence.
+struct VoicePaths {
+    python: std::path::PathBuf,
+    script: std::path::PathBuf,
+    out_dir: std::path::PathBuf,
+    voice: String,
+}
+
+impl VoicePaths {
+    fn job(&self, generation: u64, text: String) -> tts_pocket::SynthJob {
+        tts_pocket::SynthJob {
+            generation,
+            text,
+            python: self.python.clone(),
+            script: self.script.clone(),
+            out_dir: self.out_dir.clone(),
+            voice: self.voice.clone(),
+        }
+    }
+}
+
+fn resolve_voice_paths(app: &tauri::AppHandle) -> Option<VoicePaths> {
+    let voice = settings_path(app)
+        .map(|p| settings::load(&p).tts.voice)
+        .unwrap_or_else(|_| "alba".to_string());
+    match (
+        tts_setup::python_path(app),
+        tts_setup::sidecar_script_path(app),
+        tts_setup::tts_scratch_dir(app),
+    ) {
+        (Ok(python), Ok(script), Ok(out_dir)) => Some(VoicePaths { python, script, out_dir, voice }),
+        _ => None,
+    }
+}
+
 /// Records and returns the transcript directly (no clipboard paste) — the AI
 /// panel's voice-input button feeds this straight into the prompt box rather
 /// than injecting it into whatever window last had focus.
 #[tauri::command]
-fn transcribe_for_ai() -> Result<String, String> {
-    asr::record_and_transcribe()
+fn transcribe_for_ai(app: tauri::AppHandle) -> Result<String, String> {
+    let auto_stop = auto_stop_enabled(&app);
+    let tick_app = app.clone();
+    asr::record_and_transcribe(auto_stop, move |t| {
+        let _ = tick_app.emit(
+            "dictation-tick",
+            DictationTick {
+                level: t.level,
+                elapsed_ms: t.elapsed_ms,
+                heard_speech: t.heard_speech,
+            },
+        );
+    })
 }
 
 #[tauri::command]
@@ -520,25 +1014,48 @@ fn check_mic_access() -> Result<(), String> {
 fn speak_text(app: tauri::AppHandle, text: String) {
     std::thread::spawn(move || {
         if tts_setup::is_ready(&app) {
-            let sidecar = app.state::<tts_pocket::TtsSidecar>();
-            let voice = settings_path(&app)
-                .map(|p| settings::load(&p).tts.voice)
-                .unwrap_or_else(|_| "alba".to_string());
-            if let (Ok(python_path), Ok(sidecar_path), Ok(out_dir)) = (
-                tts_setup::python_path(&app),
-                tts_setup::sidecar_script_path(&app),
-                tts_setup::tts_scratch_dir(&app),
-            ) {
-                match sidecar.speak(&python_path, &sidecar_path, &text, &voice, &out_dir) {
-                    Ok(()) => return,
-                    Err(e) => eprintln!("[synapse] pocket-tts failed, falling back to OS TTS: {e}"),
+            if let Some(paths) = resolve_voice_paths(&app) {
+                let sidecar = app.state::<tts_pocket::TtsSidecar>();
+                let generation = sidecar.begin_utterance();
+                // Chunked even for one-shot text: a long selection would
+                // otherwise be several seconds of silence before anything
+                // plays, and the queue makes it start after the first sentence.
+                let chunks = sentences::split_all(&text);
+                if !chunks.is_empty() {
+                    for chunk in chunks {
+                        sidecar.enqueue(paths.job(generation, chunk));
+                    }
+                    sidecar.end_utterance(generation);
+                    return;
                 }
             }
         }
+
+        // OS fallback. Emitted by hand because this path has no audio thread to
+        // report from, and without the events the orb would never leave its
+        // speaking state on a machine with no local engine installed.
+        let _ = app.emit("tts-started", 0u64);
         if let Err(e) = tts::speak(&text) {
             eprintln!("[synapse] TTS failed: {e}");
+            let _ = app.emit("tts-error", e);
         }
+        let _ = app.emit("tts-ended", 0u64);
     });
+}
+
+/// Barge-in. Cancels whichever engine is actually live.
+#[tauri::command]
+fn stop_speaking(app: tauri::AppHandle) {
+    app.state::<tts_pocket::TtsSidecar>().stop();
+    tts::stop();
+}
+
+/// Lets a window that was hidden mid-utterance re-sync when it comes back —
+/// the webview persists across show/hide, so it can miss the `tts-ended` it
+/// was waiting for. Same reason the `wheel-shown` event exists.
+#[tauri::command]
+fn is_speaking() -> bool {
+    tts::is_speaking()
 }
 
 /// Same clipboard paste-and-restore path as dictation/snippets (PRD §4.4) —
@@ -591,18 +1108,30 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(tts_pocket::TtsSidecar::new())
+        .manage(GeometryQueue::default())
+        .manage(Conversation::default())
         .invoke_handler(tauri::generate_handler![
             dismiss_overlay,
             select_wedge,
             force_quit,
+            start_overlay_drag,
+            reveal_path,
             start_dictation,
             stop_dictation,
-            load_note,
-            save_note,
-            list_snippets,
-            add_snippet,
-            delete_snippet,
-            insert_snippet,
+            list_notes,
+            get_note,
+            create_note,
+            save_note_content,
+            set_note_color,
+            open_note_window,
+            close_note_window,
+            delete_note,
+            list_clipboard,
+            pin_clipboard_entry,
+            delete_clipboard_entry,
+            clear_clipboard_history,
+            add_pinned_clip,
+            insert_clip,
             set_api_key,
             provider_status,
             send_ai_message,
@@ -610,6 +1139,9 @@ pub fn run() {
             transcribe_for_ai,
             check_mic_access,
             speak_text,
+            stop_speaking,
+            is_speaking,
+            clear_conversation,
             get_settings,
             update_settings,
             open_settings,
@@ -626,6 +1158,32 @@ pub fn run() {
             // the broken stub instead of the int8 files.
             model_download::remove_stale_files(&model_dir);
             asr::preload_model(model_dir);
+
+            // Data migrations run before anything reads the new stores.
+            // Snippets became pinned clipboard entries; the single notepad.txt
+            // became note #1.
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                if let Err(e) = clipboard_history::migrate_snippets(&dir) {
+                    eprintln!("[synapse] snippet migration failed: {e}");
+                }
+                if let Err(e) = notes::migrate_legacy(&dir) {
+                    eprintln!("[synapse] notepad migration failed: {e}");
+                }
+            }
+            clipboard_history::spawn_watcher(app.handle().clone());
+
+            // Hands the TTS sidecar its AppHandle (for tts-started/ended) and
+            // starts the synthesis worker. Must happen here, not at .manage()
+            // time, because no AppHandle exists that early.
+            app.state::<tts_pocket::TtsSidecar>().attach(app.handle().clone());
+
+            // One flush thread for every note window, rather than one per note.
+            let geometry_app = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                flush_geometry(&geometry_app);
+            });
 
             let overlay = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse")
@@ -652,51 +1210,70 @@ pub fn run() {
             #[cfg(debug_assertions)]
             overlay.open_devtools();
 
-            // Notepad and Snippet picker are normal decorated windows (unlike
-            // the overlay) — they're content-editing surfaces the user may
-            // want to move/resize, not a transient chromeless wheel.
+            // The clipboard picker and the notes hub are normal decorated
+            // windows (unlike the overlay) — they're content surfaces the user
+            // may want to move/resize, not a transient chromeless wheel.
             // All windows load the same index.html; the frontend routes on the
             // window *label* (see App.tsx). A URL hash was tried first, but
             // Tauri escapes the '#' so window.location.hash came back empty and
             // every window rendered the wheel.
-            let notepad = WebviewWindowBuilder::new(app, NOTEPAD_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse - Notepad")
-                .inner_size(480.0, 600.0)
+            let notes_hub = WebviewWindowBuilder::new(app, NOTES_HUB_LABEL, WebviewUrl::App("index.html".into()))
+                .title("Synapse - Notes")
+                .inner_size(380.0, 560.0)
                 .visible(false)
                 .build()?;
             #[cfg(debug_assertions)]
-            notepad.open_devtools();
+            notes_hub.open_devtools();
 
             // Closing a Tauri window destroys it, after which show() silently
             // does nothing — so these utility windows intercept the close and
             // hide instead, keeping them reusable across invocations.
-            let np = notepad.clone();
-            notepad.on_window_event(move |event| {
+            // (Individual note windows are the deliberate exception; see
+            // `open_note_window`.)
+            let nh = notes_hub.clone();
+            notes_hub.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
-                    let _ = np.hide();
+                    let _ = nh.hide();
                 }
             });
 
-            let snippet_picker = WebviewWindowBuilder::new(app, SNIPPET_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Synapse - Snippets")
-                .inner_size(420.0, 520.0)
+            // Reopen the sticky notes that were on screen at last exit. A crash
+            // leaves `open: true`, so notes come back — the forgiving direction.
+            let reopen = app.handle().clone();
+            for note in notes::list(&reopen).unwrap_or_default() {
+                if note.open {
+                    if let Err(e) = open_note_window(reopen.clone(), note.id) {
+                        eprintln!("[synapse] could not reopen note: {e}");
+                    }
+                }
+            }
+
+            let clipboard_window = WebviewWindowBuilder::new(app, CLIPBOARD_LABEL, WebviewUrl::App("index.html".into()))
+                .title("Synapse - Clipboard")
+                .inner_size(460.0, 560.0)
                 .visible(false)
                 .build()?;
             #[cfg(debug_assertions)]
-            snippet_picker.open_devtools();
+            clipboard_window.open_devtools();
 
-            let sp = snippet_picker.clone();
-            snippet_picker.on_window_event(move |event| {
+            let sp = clipboard_window.clone();
+            clipboard_window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = sp.hide();
                 }
             });
 
+            // Undecorated and transparent: this window is an object you talk
+            // to, and OS title-bar chrome around a glowing orb would read as a
+            // dialog. Its own header carries data-tauri-drag-region instead.
             let ai_panel = WebviewWindowBuilder::new(app, AI_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse - AI")
-                .inner_size(420.0, 560.0)
+                .inner_size(420.0, 620.0)
+                .min_inner_size(340.0, 380.0)
+                .decorations(false)
+                .transparent(true)
                 .visible(false)
                 .build()?;
             #[cfg(debug_assertions)]

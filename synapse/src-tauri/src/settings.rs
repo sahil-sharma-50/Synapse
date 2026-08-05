@@ -14,6 +14,10 @@ pub struct Settings {
     pub onboarding_complete: bool,
     #[serde(default)]
     pub tts: TtsSettings,
+    #[serde(default)]
+    pub voice: VoiceSettings,
+    #[serde(default)]
+    pub clipboard: ClipboardSettings,
 }
 
 /// Every field carries a `serde` default. Sub-projects B, C and D each add
@@ -75,6 +79,37 @@ fn default_voice() -> String {
 impl Default for TtsSettings {
     fn default() -> Self {
         Self { voice: default_voice() }
+    }
+}
+
+/// Dictation (speech-to-text) behaviour, as distinct from `TtsSettings`, which
+/// is the speaking side.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct VoiceSettings {
+    /// Off by default: dictation ends when the user says it ends, not when the
+    /// microphone happens to go quiet mid-thought. Turning this on restores the
+    /// hands-free behaviour for people who want it.
+    #[serde(default)]
+    pub auto_stop_on_silence: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ClipboardSettings {
+    /// Clipboard history is a persistent log of everything copied, which will
+    /// include passwords and one-time codes. It ships on because that is what
+    /// makes the feature useful, but it must always be switchable off without
+    /// a restart — the watcher re-reads this every poll.
+    #[serde(default = "default_true")]
+    pub history_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ClipboardSettings {
+    fn default() -> Self {
+        Self { history_enabled: default_true() }
     }
 }
 
@@ -221,6 +256,47 @@ mod tests {
 
         let reloaded = load(&path);
         assert_eq!(reloaded.tts.voice, "giovanni", "persists across a reload");
+    }
+
+    #[test]
+    fn auto_stop_on_silence_defaults_off_and_persists() {
+        let path = temp_dir("auto-stop").join("settings.json");
+
+        let mut settings = load(&path);
+        assert!(
+            !settings.voice.auto_stop_on_silence,
+            "dictation is manual-stop by default"
+        );
+
+        settings.voice.auto_stop_on_silence = true;
+        save(&path, &settings).expect("save settings");
+        assert!(load(&path).voice.auto_stop_on_silence, "persists across a reload");
+    }
+
+    /// A settings.json written before the clipboard feature existed has no
+    /// `clipboard` key at all, and must come back with history enabled rather
+    /// than silently off (which would look like a broken feature).
+    #[test]
+    fn clipboard_history_defaults_on_for_files_predating_the_feature() {
+        let path = temp_dir("clip-default").join("settings.json");
+        std::fs::write(&path, r#"{"ai":{"provider":"openai"}}"#).expect("write settings");
+
+        let settings = load(&path);
+        assert!(settings.clipboard.history_enabled);
+    }
+
+    #[test]
+    fn clipboard_history_can_be_turned_off_and_stays_off() {
+        let path = temp_dir("clip-off").join("settings.json");
+
+        let mut settings = load(&path);
+        settings.clipboard.history_enabled = false;
+        save(&path, &settings).expect("save settings");
+
+        assert!(
+            !load(&path).clipboard.history_enabled,
+            "an explicit false must not be re-defaulted back to true"
+        );
     }
 
     #[test]

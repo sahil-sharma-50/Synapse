@@ -7,6 +7,7 @@ import {
   type Provider,
   type Settings,
 } from "../models";
+import { ChipIcon, KeyIcon, LayersIcon } from "./icons";
 
 const CUSTOM = "__custom__";
 
@@ -128,76 +129,103 @@ export default function AiSection({
 
   return (
     <div className="set-section">
-      <h2 className="set-title">AI</h2>
+      <div className="set-page-head">
+        <h2 className="set-title">AI</h2>
+        <p className="set-subtitle">
+          Synapse talks to your own account. Pick a provider and paste its key — there is no
+          Synapse server in between.
+        </p>
+      </div>
 
-      <label className="set-row">
-        <span className="set-label">Provider</span>
-        <select
-          className="set-input"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value as Provider)}
-        >
-          {(Object.keys(PROVIDER_LABELS) as Provider[]).map((p) => (
-            <option key={p} value={p}>
-              {PROVIDER_LABELS[p]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="set-row">
-        <span className="set-label">Model</span>
-        <select
-          className="set-input"
-          value={showCustomField ? CUSTOM : model}
-          onChange={(e) => selectModel(e.target.value)}
-        >
-          {catalog.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-          <option value={CUSTOM}>Custom…</option>
-        </select>
-      </label>
-
-      {showCustomField && (
-        <label className="set-row">
-          <span className="set-label" />
-          <input
-            className="set-input"
-            placeholder="Model ID"
-            value={customDraft}
-            onChange={(e) => onCustomInput(e.target.value)}
-            onBlur={onCustomBlur}
-          />
-        </label>
-      )}
-
-      <div className="set-row">
-        <span className="set-label">API key</span>
-        <div className="set-key">
-          <span
-            className={`set-badge ${status[provider] ? "set-ok" : "set-missing"}`}
-          >
-            {status[provider] ? "Key set" : "No key"}
+      <div className="set-card-title">Connection</div>
+      <div className="set-card">
+        <label className="set-card-row">
+          <span className="set-row-icon">
+            <ChipIcon />
           </span>
-          <input
-            className="set-input"
-            type="password"
-            placeholder={`${PROVIDER_LABELS[provider]} API key`}
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && saveKey()}
-          />
-          <button className="set-btn" onClick={saveKey}>
-            Save
-          </button>
-          {status[provider] && (
-            <button className="set-btn set-btn-quiet" onClick={removeKey}>
-              Remove
+          <span className="set-label">Provider</span>
+          <div className="set-control">
+            <select
+              className="set-input"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as Provider)}
+            >
+              {(Object.keys(PROVIDER_LABELS) as Provider[]).map((p) => (
+                <option key={p} value={p}>
+                  {PROVIDER_LABELS[p]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </label>
+
+        <label className="set-card-row">
+          <span className="set-row-icon">
+            <LayersIcon />
+          </span>
+          <span className="set-label">Model</span>
+          <div className="set-control">
+            <select
+              className="set-input"
+              value={showCustomField ? CUSTOM : model}
+              onChange={(e) => selectModel(e.target.value)}
+            >
+              {catalog.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+              <option value={CUSTOM}>Custom…</option>
+            </select>
+          </div>
+        </label>
+
+        {showCustomField && (
+          // Indented by CSS rather than by an empty icon span standing in as a
+          // spacer — this row belongs to the Model row above it, and saying so
+          // in the class name survives an icon-size change.
+          <label className="set-card-row set-card-subrow">
+            <span className="set-label">Model ID</span>
+            <div className="set-control">
+              <input
+                className="set-input"
+                placeholder="Model ID"
+                value={customDraft}
+                onChange={(e) => onCustomInput(e.target.value)}
+                onBlur={onCustomBlur}
+              />
+            </div>
+          </label>
+        )}
+
+        <div className="set-card-row">
+          <span className="set-row-icon">
+            <KeyIcon />
+          </span>
+          <span className="set-label">API key</span>
+          <div className="set-key">
+            <span
+              className={`set-badge ${status[provider] ? "set-ok" : "set-missing"}`}
+            >
+              {status[provider] ? "Key set" : "No key"}
+            </span>
+            <input
+              className="set-input"
+              type="password"
+              placeholder={`${PROVIDER_LABELS[provider]} API key`}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && saveKey()}
+            />
+            <button className="set-btn" onClick={saveKey} disabled={!keyInput.trim()}>
+              Save
             </button>
-          )}
+            {status[provider] && (
+              <button className="set-btn set-btn-quiet" onClick={removeKey}>
+                Remove
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
