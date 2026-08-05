@@ -281,6 +281,18 @@ fn save_note(app: tauri::AppHandle, content: String) -> Result<(), String> {
     notes::write(&app, &content)
 }
 
+/// Write to an explicit path the user picked in a file dialog, rather than to
+/// the persistent app-data note that `save_note` owns.
+#[tauri::command]
+fn save_note_to(content: String, path: String) -> Result<(), String> {
+    notes::write_to(&path, &content)
+}
+
+#[tauri::command]
+fn load_note_from(path: String) -> Result<String, String> {
+    notes::read_from(&path)
+}
+
 #[tauri::command]
 fn list_snippets(app: tauri::AppHandle) -> Result<Vec<snippets::Snippet>, String> {
     snippets::list(&app)
@@ -590,6 +602,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(tts_pocket::TtsSidecar::new())
         .invoke_handler(tauri::generate_handler![
             dismiss_overlay,
@@ -599,6 +612,8 @@ pub fn run() {
             stop_dictation,
             load_note,
             save_note,
+            save_note_to,
+            load_note_from,
             list_snippets,
             add_snippet,
             delete_snippet,
