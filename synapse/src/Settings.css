@@ -62,7 +62,8 @@
   font: inherit;
   cursor: pointer;
   outline: none;
-  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    background var(--sy-dur-fast) var(--sy-ease-out),
     color var(--sy-dur-fast) var(--sy-ease-out);
 }
 
@@ -260,7 +261,8 @@ label.set-card-row:hover {
   color: var(--sy-text);
   font: inherit;
   outline: none;
-  transition: border-color var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    border-color var(--sy-dur-fast) var(--sy-ease-out),
     box-shadow var(--sy-dur-fast) var(--sy-ease-out);
 }
 
@@ -332,7 +334,8 @@ select.set-input {
   font-weight: var(--sy-fw-semi);
   cursor: pointer;
   white-space: nowrap;
-  transition: filter var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    filter var(--sy-dur-fast) var(--sy-ease-out),
     transform var(--sy-dur-fast) var(--sy-ease-out);
 }
 
@@ -390,7 +393,8 @@ select.set-input {
   border: 1px solid var(--sy-border-strong);
   border-radius: var(--sy-r-pill);
   cursor: pointer;
-  transition: background var(--sy-dur-base) var(--sy-ease-out),
+  transition:
+    background var(--sy-dur-base) var(--sy-ease-out),
     border-color var(--sy-dur-base) var(--sy-ease-out);
 }
 

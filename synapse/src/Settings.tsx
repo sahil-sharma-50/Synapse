@@ -29,11 +29,15 @@ export default function Settings() {
   const [version, setVersion] = useState("");
 
   useEffect(() => {
-    invoke<SettingsData>("get_settings").then(setSettings).catch((e) => setError(String(e)));
+    invoke<SettingsData>("get_settings")
+      .then(setSettings)
+      .catch((e) => setError(String(e)));
   }, []);
 
   useEffect(() => {
-    getVersion().then(setVersion).catch(() => {});
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

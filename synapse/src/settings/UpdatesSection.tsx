@@ -35,7 +35,9 @@ export default function UpdatesSection() {
   useEffect(() => {
     // Best-effort: shows the version immediately, but the check result also
     // carries it, so a failure here is not worth surfacing.
-    getVersion().then(setCurrentVersion).catch(() => {});
+    getVersion()
+      .then(setCurrentVersion)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -101,9 +103,8 @@ export default function UpdatesSection() {
       <h2 className="set-title">Updates</h2>
 
       <p className="set-hint">
-        Synapse checks GitHub for new releases. When a newer version is published,
-        you can download and install it right here — no need to grab the installer
-        from the browser.
+        Synapse checks GitHub for new releases. When a newer version is published, you can download
+        and install it right here — no need to grab the installer from the browser.
       </p>
 
       <div className="set-row">
@@ -150,9 +151,7 @@ export default function UpdatesSection() {
         </div>
       )}
 
-      {status === "installing" && (
-        <p className="set-note">Installing… Synapse will restart.</p>
-      )}
+      {status === "installing" && <p className="set-note">Installing… Synapse will restart.</p>}
 
       {error && <div className="set-error">{error}</div>}
     </div>
