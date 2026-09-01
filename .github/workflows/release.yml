@@ -57,7 +57,7 @@ jobs:
       # endpoint in tauri.conf.json points at `releases/latest/download/
       # latest.json`, so the release must not stay a draft or the updater will
       # 404 — hence draft: false.
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
