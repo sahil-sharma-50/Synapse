@@ -63,8 +63,16 @@ missing; add it centrally.
   until the user stops it and a static animation would be indistinguishable from
   a hang.
 - **Settings** (`Settings.css`) — two panes, one trailing control axis so every
-  row lines up regardless of label length. Collapses to an icon rail under
-  620px. The most conventional surface in the app, on purpose.
+  row lines up regardless of label length. A branded sidebar groups four direct
+  destinations without redundant category headings. Save status sits above the
+  content; failed loads and writes offer recovery. Opens at 860×640, collapses
+  to an icon rail under 620px, and stacks controls in narrow windows.
+- **Setup** (`Onboarding.css`) — charcoal task surface, numbered and named steps,
+  shared stroke icons, flat blue primary actions. The final screen reports model,
+  microphone and optional voice readiness separately, including skipped setup.
+- **Installer** — native Windows installer controls with a charcoal sidebar,
+  compact Synapse mark and shortcut. Artwork is regenerated using the portable
+  `synapse/src-tauri/installer/make-art.ps1` script.
 - **Clipboard** (`Clipboard.css`) — the most keyboard-driven surface: type to
   filter, ↑/↓, Enter to paste. Dense rows, actions revealed only on the active
   row (a delete button on all 500 rows is an invitation to misclick).

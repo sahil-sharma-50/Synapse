@@ -9,22 +9,30 @@
   },
   "Clipboard.css": {
     "hex": 0,
-    "px": 1
+    "px": 0
   },
   "NotesHub.css": {
-    "hex": 5,
-    "px": 1
+    "hex": 0,
+    "px": 0
   },
   "Onboarding.css": {
-    "hex": 9,
-    "px": 27
+    "hex": 3,
+    "px": 24
+  },
+  "RichNoteEditor.css": {
+    "hex": 0,
+    "px": 0
   },
   "Settings.css": {
     "hex": 0,
     "px": 2
   },
   "StickyNote.css": {
-    "hex": 20,
+    "hex": 0,
+    "px": 0
+  },
+  "WindowChrome.css": {
+    "hex": 0,
     "px": 0
   }
 }

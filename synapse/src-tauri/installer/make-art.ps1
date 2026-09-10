@@ -1,7 +1,7 @@
 Add-Type -AssemblyName System.Drawing
 
-$logoPath = 'C:\Users\sahil\Desktop\Synapse\assets\synapse_icon.png'
-$outDir   = 'C:\Users\sahil\Desktop\Synapse\synapse\src-tauri\installer'
+$logoPath = Join-Path $PSScriptRoot '..\icons\128x128.png'
+$outDir   = $PSScriptRoot
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
 $logo = [System.Drawing.Image]::FromFile($logoPath)
@@ -40,12 +40,7 @@ $g.Dispose(); $bmp.Dispose()
 $r = New-Canvas 164 314
 $bmp = $r[0]; $g = $r[1]
 
-$grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-  (New-Object System.Drawing.Point(0, 0)),
-  (New-Object System.Drawing.Point(164, 314)),
-  ([System.Drawing.Color]::FromArgb(30, 31, 38)),
-  ([System.Drawing.Color]::FromArgb(11, 11, 13)))
-$g.FillRectangle($grad, 0, 0, 164, 314)
+$g.Clear([System.Drawing.Color]::FromArgb(21, 21, 23))
 
 # soft blue glow behind the mark, matching the app's accent
 $glow = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -55,24 +50,26 @@ $halo.CenterColor = [System.Drawing.Color]::FromArgb(36, 42, 58)
 $halo.SurroundColors = @([System.Drawing.Color]::FromArgb(15, 15, 18))
 $g.FillPath($halo, $glow)
 
-$mark = 96
-$g.DrawImage($logo, (New-Object System.Drawing.Rectangle(([int]((164 - $mark) / 2)), 78, $mark, $mark)))
+$mark = 64
+$g.DrawImage($logo, (New-Object System.Drawing.Rectangle(20, 32, $mark, $mark)))
 
 $sfc = New-Object System.Drawing.StringFormat
-$sfc.Alignment = [System.Drawing.StringAlignment]::Center
+$sfc.Alignment = [System.Drawing.StringAlignment]::Near
 
 $fontTitle = New-Object System.Drawing.Font('Segoe UI Semibold', 22, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
 $brushWhite = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(240, 241, 245))
-$g.DrawString('Synapse', $fontTitle, $brushWhite, (New-Object System.Drawing.RectangleF(0, 196, 164, 30)), $sfc)
+$g.DrawString('Synapse', $fontTitle, $brushWhite, (New-Object System.Drawing.RectangleF(18, 116, 140, 34)), $sfc)
 
 $fontSub = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-$brushMuted = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(138, 142, 156))
-$g.DrawString("Dictation, AI and notes`nunder one hotkey", $fontSub, $brushMuted, (New-Object System.Drawing.RectangleF(0, 228, 164, 40)), $sfc)
+$brushMuted = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(180, 183, 192))
+$g.DrawString("Your desktop tools.`nOne shortcut away.", $fontSub, $brushMuted, (New-Object System.Drawing.RectangleF(20, 162, 130, 44)), $sfc)
+$g.DrawString("Ctrl + Alt + Enter", $fontSub, $brushWhite, (New-Object System.Drawing.RectangleF(20, 268, 140, 24)), $sfc)
 
 $accent = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(90, 170, 255))
-$g.FillRectangle($accent, 62, 284, 40, 2)
+$g.FillRectangle($accent, 20, 246, 24, 2)
 
 $bmp.Save("$outDir\sidebar.bmp", [System.Drawing.Imaging.ImageFormat]::Bmp)
+$halo.Dispose(); $glow.Dispose()
 $g.Dispose(); $bmp.Dispose()
 $logo.Dispose()
 

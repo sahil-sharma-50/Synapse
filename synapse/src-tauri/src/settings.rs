@@ -76,6 +76,12 @@ fn default_voice() -> String {
     "alba".to_string()
 }
 
+pub const TTS_VOICES: &[&str] = &["alba", "giovanni", "lola", "juergen", "rafael", "estelle"];
+
+pub fn is_tts_voice(voice: &str) -> bool {
+    TTS_VOICES.contains(&voice)
+}
+
 impl Default for TtsSettings {
     fn default() -> Self {
         Self { voice: default_voice() }
@@ -101,16 +107,49 @@ pub struct ClipboardSettings {
     /// a restart — the watcher re-reads this every poll.
     #[serde(default = "default_true")]
     pub history_enabled: bool,
+    #[serde(default = "default_true")]
+    pub capture_text: bool,
+    #[serde(default = "default_true")]
+    pub capture_images: bool,
+    #[serde(default = "default_true")]
+    pub capture_links: bool,
+    #[serde(default = "default_true")]
+    pub capture_files: bool,
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
+    #[serde(default = "default_max_unpinned_items")]
+    pub max_unpinned_items: usize,
+    #[serde(default = "default_max_storage_mb")]
+    pub max_storage_mb: u64,
 }
 
 fn default_true() -> bool {
     true
 }
 
+fn default_retention_days() -> u32 {
+    30
+}
+
+fn default_max_unpinned_items() -> usize {
+    500
+}
+
+fn default_max_storage_mb() -> u64 {
+    250
+}
+
 impl Default for ClipboardSettings {
     fn default() -> Self {
         Self {
             history_enabled: default_true(),
+            capture_text: default_true(),
+            capture_images: default_true(),
+            capture_links: default_true(),
+            capture_files: default_true(),
+            retention_days: default_retention_days(),
+            max_unpinned_items: default_max_unpinned_items(),
+            max_storage_mb: default_max_storage_mb(),
         }
     }
 }
@@ -302,6 +341,40 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_retention_defaults_match_the_product_limits() {
+        let path = temp_dir("clip-retention-defaults").join("settings.json");
+        let settings = load(&path);
+
+        assert_eq!(settings.clipboard.retention_days, 30);
+        assert_eq!(settings.clipboard.max_unpinned_items, 500);
+        assert_eq!(settings.clipboard.max_storage_mb, 250);
+        assert!(settings.clipboard.capture_text);
+        assert!(settings.clipboard.capture_images);
+        assert!(settings.clipboard.capture_links);
+        assert!(settings.clipboard.capture_files);
+    }
+
+    #[test]
+    fn clipboard_retention_and_capture_choices_persist() {
+        let path = temp_dir("clip-retention-custom").join("settings.json");
+        let mut settings = load(&path);
+        settings.clipboard.retention_days = 7;
+        settings.clipboard.max_unpinned_items = 120;
+        settings.clipboard.max_storage_mb = 64;
+        settings.clipboard.capture_images = false;
+        settings.clipboard.capture_files = false;
+        save(&path, &settings).expect("save settings");
+
+        let reloaded = load(&path);
+        assert_eq!(reloaded.clipboard.retention_days, 7);
+        assert_eq!(reloaded.clipboard.max_unpinned_items, 120);
+        assert_eq!(reloaded.clipboard.max_storage_mb, 64);
+        assert!(!reloaded.clipboard.capture_images);
+        assert!(!reloaded.clipboard.capture_files);
+        assert!(reloaded.clipboard.capture_text);
+    }
+
+    #[test]
     fn tts_settings_missing_from_file_defaults_gracefully() {
         let path = temp_dir("tts-missing").join("settings.json");
         std::fs::write(&path, r#"{"ai":{"provider":"anthropic"}}"#).expect("write settings");
@@ -311,5 +384,13 @@ mod tests {
             settings.tts.voice, "alba",
             "missing tts section defaults, does not fail parse"
         );
+    }
+
+    #[test]
+    fn only_bundled_tts_voices_are_accepted() {
+        assert!(is_tts_voice("alba"));
+        assert!(is_tts_voice("estelle"));
+        assert!(!is_tts_voice("../../custom"));
+        assert!(!is_tts_voice(""));
     }
 }

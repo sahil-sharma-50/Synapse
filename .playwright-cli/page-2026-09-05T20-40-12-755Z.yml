@@ -1,0 +1,31 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]: Synapse
+    - list "Setup progress" [ref=f2e6]:
+      - listitem "Welcome" [ref=f2e7]:
+        - generic [ref=f2e8]: "1"
+        - text: Welcome
+      - listitem "Microphone" [ref=f2e9]:
+        - generic [ref=f2e10]: "2"
+        - text: Microphone
+      - listitem "Dictation" [ref=f2e11]:
+        - generic [ref=f2e12]: "3"
+        - text: Dictation
+      - listitem "Read aloud" [ref=f2e13]:
+        - generic [ref=f2e14]: "4"
+        - text: Read aloud
+      - listitem "Finish" [ref=f2e15]:
+        - generic [ref=f2e16]: "5"
+        - text: Finish
+  - main [ref=f2e52]:
+    - generic [ref=f2e53]:
+      - heading "Microphone access" [level=1] [ref=f2e54]
+      - paragraph [ref=f2e55]: Dictation transcribes on this machine, audio never leaves your computer. Windows still needs your permission before Synapse can listen.
+      - generic [ref=f2e56]:
+        - generic [ref=f2e57]:
+          - generic [ref=f2e58]: Not checked yet
+          - button "Allow microphone" [ref=f2e59] [cursor=pointer]
+        - paragraph [ref=f2e60]: Check whether Synapse can use your microphone. You can also continue and set this up later.
+  - contentinfo [ref=f2e50]:
+    - button "Back" [ref=f2e61] [cursor=pointer]
+    - button "Continue" [active] [ref=f2e62] [cursor=pointer]

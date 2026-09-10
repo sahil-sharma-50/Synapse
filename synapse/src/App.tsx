@@ -11,6 +11,9 @@ import Onboarding from "./Onboarding";
 // label set in src-tauri/src/lib.rs. (A URL hash was tried first — Tauri
 // escapes the '#', so window.location.hash was always empty and each window
 // fell through to the wheel.)
+// The route is resolved before mounting so each Tauri window keeps its own
+// focused task surface and the utility windows stay independent in the same shell.
+// Picker surfaces stay keyboard-first even when they have no stored content yet.
 const NOTE_PREFIX = "note-";
 
 export default function App() {

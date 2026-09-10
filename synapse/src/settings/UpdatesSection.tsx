@@ -92,13 +92,10 @@ export default function UpdatesSection() {
 
   return (
     <div className="set-section">
-      <h2 className="set-title">Updates</h2>
-
-      <p className="set-hint">
-        Synapse checks GitHub for new releases. Updates are signature-checked against a key built
-        into this app before anything is installed, so a download that has been tampered with is
-        refused rather than run.
-      </p>
+      <div className="set-page-head">
+        <h2 className="set-title">Updates</h2>
+        <p className="set-subtitle">Keep Synapse up to date. You choose when to download and install a new version. Installing an update restarts the app.</p>
+      </div>
 
       <div className="set-row">
         <span className="set-label">Current version</span>
@@ -135,7 +132,10 @@ export default function UpdatesSection() {
               sweep animation lives on `.set-meter-idle .set-meter-fill`, so an
               empty track renders as a frozen bar and reads as a hang. */}
           <div className={`set-meter ${known ? "" : "set-meter-idle"}`}>
-            <div className="set-meter-fill" style={known ? { width: `${percent}%` } : undefined} />
+          <div
+            className="set-meter-fill"
+            style={known ? { "--meter-progress": percent / 100 } as React.CSSProperties : undefined}
+          />
           </div>
           <div className="set-progress-foot">
             <span>{known ? `${Math.floor(percent)}%` : "Downloading…"}</span>
@@ -146,7 +146,7 @@ export default function UpdatesSection() {
 
       {status === "installing" && <p className="set-note">Installing… Synapse will restart.</p>}
 
-      {error && <div className="set-error">{error}</div>}
+      {error && <div className="set-error" role="alert">{error}</div>}
     </div>
   );
 }

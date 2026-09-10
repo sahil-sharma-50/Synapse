@@ -237,7 +237,7 @@ fn prewarm_weights(python: &Path, sidecar_script: &Path, scratch_dir: &Path) -> 
 
     let out_path = scratch_dir.join("prewarm.wav");
     let request = crate::tts_pocket::SidecarRequest {
-        id: 0,
+        id: 1,
         text: "warming up".to_string(),
         voice: "alba".to_string(),
         out_path: out_path.to_string_lossy().to_string(),
@@ -256,28 +256,43 @@ fn prewarm_weights(python: &Path, sidecar_script: &Path, scratch_dir: &Path) -> 
     // otherwise `spawn_setup` would write the READY marker over a broken
     // environment and every future `speak()` would silently fall back to OS
     // TTS with the real cause lost.
-    let mut response_line = String::new();
+    let mut ready_line = String::new();
     let read_result = if let Some(stdout) = child.stdout.take() {
-        BufReader::new(stdout)
-            .read_line(&mut response_line)
-            .map_err(|e| e.to_string())
+        let mut stdout = BufReader::new(stdout);
+        stdout.read_line(&mut ready_line).map_err(|e| e.to_string())?;
+        let ready = crate::tts_pocket::decode_response(ready_line.trim())?;
+        if !crate::tts_pocket::is_ready_handshake(&ready) {
+            return Err("prewarm sidecar did not report ready".to_string());
+        }
+        loop {
+            let mut response_line = String::new();
+            stdout.read_line(&mut response_line).map_err(|e| e.to_string())?;
+            let response = crate::tts_pocket::decode_response(response_line.trim())
+                .map_err(|e| format!("prewarm sidecar produced no valid response: {e}"))?;
+            match response.status.as_str() {
+                "chunk" => {
+                    if let Some(path) = response.path {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+                "ok" => break Ok(()),
+                _ => {
+                    break Err(response
+                        .message
+                        .unwrap_or_else(|| "prewarm sidecar reported failure".to_string()));
+                }
+            }
+        }
     } else {
         Err("prewarm sidecar stdout unavailable".to_string())
     };
 
+    drop(child.stdin.take());
     let status = child.wait().map_err(|e| e.to_string())?;
-    let _ = std::fs::remove_file(&out_path);
 
     if !status.success() {
         return Err(format!("prewarm sidecar exited with {status}"));
     }
     read_result?;
-    let response = crate::tts_pocket::decode_response(response_line.trim())
-        .map_err(|e| format!("prewarm sidecar produced no valid response: {e}"))?;
-    if response.status != "ok" {
-        return Err(response
-            .message
-            .unwrap_or_else(|| "prewarm sidecar reported failure".to_string()));
-    }
     Ok(())
 }

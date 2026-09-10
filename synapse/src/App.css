@@ -103,21 +103,22 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sy-2);
+  gap: var(--sy-3);
+  padding: var(--sy-4);
   pointer-events: none;
   color: var(--sy-text);
   text-align: center;
   max-width: 104px;
 }
 
-.hub-title {
-  font-size: var(--sy-fs-sm);
+.wheel-hub-title {
+  font-size: var(--sy-fs-md);
   font-weight: var(--sy-fw-semi);
   line-height: var(--sy-lh-tight);
 }
 
-.hub-hint {
-  font-size: 9px;
+.wheel-hub-hint {
+  font-size: 8px;
   color: var(--sy-text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -216,12 +217,14 @@ body,
 
 .level-bar {
   width: 4px;
-  min-height: 4px;
+  height: 34px;
   border-radius: var(--sy-r-pill);
   background: var(--sy-accent-solid);
-  /* Height is set inline from the live level; the transition keeps it from
-     jittering frame to frame. */
-  transition: height 90ms var(--sy-ease-out);
+  /* Scale the fixed bar rather than animating layout height; this keeps the
+     live meter smooth without forcing surrounding layout to recalculate. */
+  transform: scaleY(var(--level-scale, 0.15));
+  transform-origin: center;
+  transition: transform 90ms var(--sy-ease-out);
 }
 
 /* Waiting for the first sound: a slow sweep so the meter never looks frozen. */
@@ -245,11 +248,11 @@ body,
 @keyframes level-idle {
   0%,
   100% {
-    height: 5px;
+    transform: scaleY(0.15);
     opacity: 0.35;
   }
   50% {
-    height: 13px;
+    transform: scaleY(0.38);
     opacity: 0.75;
   }
 }

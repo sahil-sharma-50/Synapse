@@ -1,0 +1,13 @@
+- generic [ref=f11e3]:
+  - img [ref=f11e4]:
+    - generic [ref=f11e5] [cursor=pointer]
+    - generic [ref=f11e8] [cursor=pointer]
+    - generic [ref=f11e11] [cursor=pointer]
+    - generic [ref=f11e14] [cursor=pointer]
+    - generic [ref=f11e17] [cursor=pointer]
+    - generic [ref=f11e20] [cursor=pointer]
+    - generic [ref=f11e23] [cursor=pointer]
+    - generic [ref=f11e26] [cursor=pointer]
+  - generic:
+    - generic: Pick an action
+    - generic: drag to move · esc to close

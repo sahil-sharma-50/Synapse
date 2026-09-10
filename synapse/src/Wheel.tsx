@@ -83,7 +83,7 @@ function LevelMeter({ level, active }: { level: number; active: boolean }) {
         <span
           key={i}
           className="level-bar"
-          style={active ? { height: `${5 + norm * weights[i] * 28}px` } : undefined}
+          style={active ? { "--level-scale": (5 + norm * weights[i] * 28) / 34 } as React.CSSProperties : undefined}
         />
       ))}
     </div>
@@ -308,8 +308,8 @@ export default function Wheel() {
       </svg>
 
       <div className="hub-label">
-        <span className="hub-title">{hoveredWedge ? hoveredWedge.label : "Pick an action"}</span>
-        <span className="hub-hint">drag to move · esc to close</span>
+        <span className="wheel-hub-title">{hoveredWedge ? hoveredWedge.label : "Pick an action"}</span>
+        <span className="wheel-hub-hint">drag to move · esc to close</span>
       </div>
     </div>
   );

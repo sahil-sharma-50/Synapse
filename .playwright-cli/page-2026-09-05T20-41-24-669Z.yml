@@ -1,0 +1,31 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]: Synapse
+    - list "Setup progress" [ref=f2e6]:
+      - listitem "Welcome" [ref=f2e7]:
+        - generic [ref=f2e8]: "1"
+        - text: Welcome
+      - listitem "Microphone" [ref=f2e9]:
+        - generic [ref=f2e10]: "2"
+        - text: Microphone
+      - listitem "Dictation" [ref=f2e11]:
+        - generic [ref=f2e12]: "3"
+        - text: Dictation
+      - listitem "Read aloud" [ref=f2e13]:
+        - generic [ref=f2e14]: "4"
+        - text: Read aloud
+      - listitem "Finish" [ref=f2e15]:
+        - generic [ref=f2e16]: "5"
+        - text: Finish
+  - main [ref=f2e73]:
+    - generic [ref=f2e74]:
+      - heading "Speak Selected Text (optional)" [level=1] [ref=f2e75]
+      - paragraph [ref=f2e76]: Select text anywhere and have Synapse read it aloud. This downloads a self-contained speech engine, roughly 1-2 GB — optional, and you can grab it later from Settings → Voice instead.
+      - generic [ref=f2e77]:
+        - generic [ref=f2e78]:
+          - generic [ref=f2e79]: Not downloaded
+          - button "Download now" [ref=f2e80] [cursor=pointer]
+        - paragraph [ref=f2e81]: You can skip this and grab it later from Settings → Voice.
+  - contentinfo [ref=f2e50]:
+    - button "Back" [ref=f2e61] [cursor=pointer]
+    - button "Skip for now" [active] [ref=f2e72] [cursor=pointer]

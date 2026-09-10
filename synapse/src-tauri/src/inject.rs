@@ -85,18 +85,7 @@ pub fn paste_text(app: &tauri::AppHandle, text: &str) -> Result<(), String> {
     // synthesizing input into it.
     std::thread::sleep(std::time::Duration::from_millis(80));
 
-    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("{e:?}"))?;
-
-    #[cfg(target_os = "macos")]
-    let modifier = Key::Meta;
-    #[cfg(not(target_os = "macos"))]
-    let modifier = Key::Control;
-
-    enigo.key(modifier, Direction::Press).map_err(|e| format!("{e:?}"))?;
-    enigo
-        .key(Key::Unicode('v'), Direction::Click)
-        .map_err(|e| format!("{e:?}"))?;
-    enigo.key(modifier, Direction::Release).map_err(|e| format!("{e:?}"))?;
+    send_paste_keystroke()?;
 
     std::thread::sleep(std::time::Duration::from_millis(80));
     if let Some(prev) = previous {
@@ -104,6 +93,62 @@ pub fn paste_text(app: &tauri::AppHandle, text: &str) -> Result<(), String> {
         let _ = clipboard.write_text(prev);
     }
 
+    Ok(())
+}
+
+fn send_paste_keystroke() -> Result<(), String> {
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("{e:?}"))?;
+    #[cfg(target_os = "macos")]
+    let modifier = Key::Meta;
+    #[cfg(not(target_os = "macos"))]
+    let modifier = Key::Control;
+    enigo.key(modifier, Direction::Press).map_err(|e| format!("{e:?}"))?;
+    enigo
+        .key(Key::Unicode('v'), Direction::Click)
+        .map_err(|e| format!("{e:?}"))?;
+    enigo.key(modifier, Direction::Release).map_err(|e| format!("{e:?}"))
+}
+
+#[cfg(target_os = "windows")]
+pub fn paste_files(app: &tauri::AppHandle, paths: &[String]) -> Result<(), String> {
+    use clipboard_win::{formats, get_clipboard, Setter};
+    let _guard = ClipboardGuard::new();
+    let previous_text = app.clipboard().read_text().ok();
+    let previous_files: Option<Vec<String>> = get_clipboard(formats::FileList).ok();
+    formats::FileList
+        .write_clipboard(paths)
+        .map_err(|error| error.to_string())?;
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    send_paste_keystroke()?;
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    if let Some(files) = previous_files {
+        let _ = formats::FileList.write_clipboard(&files);
+    } else if let Some(text) = previous_text {
+        note_self_write(&text);
+        let _ = app.clipboard().write_text(text);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn paste_bitmap(app: &tauri::AppHandle, bitmap: &[u8]) -> Result<(), String> {
+    use clipboard_win::{formats, get_clipboard, Setter};
+    let _guard = ClipboardGuard::new();
+    let previous_text = app.clipboard().read_text().ok();
+    let previous_bitmap: Option<Vec<u8>> = get_clipboard(formats::Bitmap).ok();
+    let bitmap = bitmap.to_vec();
+    formats::Bitmap
+        .write_clipboard(&bitmap)
+        .map_err(|error| error.to_string())?;
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    send_paste_keystroke()?;
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    if let Some(bytes) = previous_bitmap {
+        let _ = formats::Bitmap.write_clipboard(&bytes);
+    } else if let Some(text) = previous_text {
+        note_self_write(&text);
+        let _ = app.clipboard().write_text(text);
+    }
     Ok(())
 }
 

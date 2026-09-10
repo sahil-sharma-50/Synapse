@@ -2,249 +2,116 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Settings } from "./models";
+import WindowChrome from "./WindowChrome";
 import "./Clipboard.css";
 
-interface ClipEntry {
-  id: string;
-  text: string;
-  copied_at: number;
-  pinned: boolean;
-  name: string | null;
-}
+type ClipKind = "text" | "link" | "image" | "files";
+interface ClipEntry { id: string; text: string; kind: ClipKind; asset_path: string | null; file_paths: string[]; byte_size: number; copied_at: number; pinned: boolean; name: string | null; }
 
-function relativeTime(ms: number): string {
+function relativeTime(ms: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return "Now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return days < 7 ? `${days}d ago` : new Date(ms).toLocaleDateString();
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-/// Collapses a clip to one scannable line. Real clipboard content is full of
-/// newlines and runs of spaces, which would otherwise render as a ragged gap.
-function preview(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+function preview(entry: ClipEntry) {
+  if (entry.kind === "image") return entry.name || "Copied image";
+  if (entry.kind === "files") return entry.name || `${entry.file_paths.length} files`;
+  return entry.text.replace(/\s+/g, " ").trim();
 }
 
-function lineCount(text: string): number {
-  return text.split("\n").length;
+function kindLabel(kind: ClipKind) { return ({ text: "Text", link: "Link", image: "Image", files: "Files" } as const)[kind] ?? "Text"; }
+
+function ClipImage({ id }: { id: string }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let url = "";
+    invoke<number[]>("clipboard_asset", { id }).then((bytes) => {
+      url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "image/bmp" }));
+      setSrc(url);
+    }).catch(() => setSrc(""));
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [id]);
+  return src ? <img src={src} alt="Clipboard preview" /> : <span className="clip-image-placeholder">Image preview unavailable</span>;
 }
 
 export default function Clipboard() {
   const [entries, setEntries] = useState<ClipEntry[]>([]);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | ClipKind>("all");
   const [selected, setSelected] = useState(0);
-  const [confirmingClear, setConfirmingClear] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [quickLook, setQuickLook] = useState<ClipEntry | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [error, setError] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(() => {
-    invoke<ClipEntry[]>("list_clipboard").then(setEntries).catch(() => {});
+    Promise.all([invoke<ClipEntry[]>("list_clipboard"), invoke<Settings>("get_settings")])
+      .then(([items, settings]) => { setEntries(items); setPaused(!settings.clipboard.history_enabled); setError(""); })
+      .catch((reason) => setError(String(reason)));
   }, []);
 
   useEffect(refresh, [refresh]);
-
-  // The window is hidden rather than closed, so it must re-read on every show
-  // and stay live while the user copies things in other apps.
   useEffect(() => {
-    const unlistenChanged = listen("clipboard-changed", refresh);
-    const unlistenFocus = getCurrentWindow().onFocusChanged(({ payload }) => {
-      if (!payload) return;
-      refresh();
-      setConfirmingClear(false);
-      searchRef.current?.focus();
-      searchRef.current?.select();
-    });
-    return () => {
-      unlistenChanged.then((f) => f());
-      unlistenFocus.then((f) => f());
-    };
+    const changed = listen("clipboard-changed", refresh);
+    const settings = listen("settings-changed", refresh);
+    const focus = getCurrentWindow().onFocusChanged(({ payload }) => { if (payload) { refresh(); searchRef.current?.focus(); } });
+    return () => { void changed.then((stop) => stop()); void settings.then((stop) => stop()); void focus.then((stop) => stop()); };
   }, [refresh]);
 
-  const { pinned, recent } = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const match = (e: ClipEntry) =>
-      !q || e.text.toLowerCase().includes(q) || (e.name ?? "").toLowerCase().includes(q);
-    const hits = entries.filter(match);
-    return {
-      pinned: hits.filter((e) => e.pinned),
-      recent: hits.filter((e) => !e.pinned),
-    };
-  }, [entries, query]);
+  const ordered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return entries
+      .filter((entry) => filter === "all" || entry.kind === filter)
+      .filter((entry) => !needle || `${entry.name ?? ""} ${entry.text} ${entry.file_paths.join(" ")}`.toLowerCase().includes(needle))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.copied_at - a.copied_at);
+  }, [entries, filter, query]);
+  const active = Math.min(selected, Math.max(0, ordered.length - 1));
 
-  // One flat ordering behind the two visual groups, so ↑/↓ crosses the
-  // Pinned/Recent boundary the way the eye expects rather than trapping the
-  // cursor in the first section.
-  const ordered = useMemo(() => [...pinned, ...recent], [pinned, recent]);
+  useEffect(() => { listRef.current?.querySelector<HTMLElement>('[data-selected="true"]')?.scrollIntoView({ block: "nearest" }); }, [active]);
 
-  useEffect(() => {
-    setSelected((s) => Math.min(s, Math.max(0, ordered.length - 1)));
-  }, [ordered.length]);
+  function paste(entry: ClipEntry) { invoke("insert_clipboard_entry", { id: entry.id }).catch((reason) => setError(String(reason))); }
+  function togglePin(entry: ClipEntry, event: React.MouseEvent) { event.stopPropagation(); void invoke("pin_clipboard_entry", { id: entry.id, pinned: !entry.pinned }).then(refresh); }
+  function remove(entry: ClipEntry, event: React.MouseEvent) { event.stopPropagation(); void invoke("delete_clipboard_entry", { id: entry.id }).then(refresh); }
 
-  useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>('[data-selected="true"]')
-      ?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
-
-  function paste(entry: ClipEntry) {
-    invoke("insert_clip", { content: entry.text });
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Escape") { if (quickLook) setQuickLook(null); else void getCurrentWindow().hide(); return; }
+    if (event.key === " " && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); setQuickLook(ordered[active] ?? null); return; }
+    if (event.target instanceof HTMLInputElement) return;
+    if (event.key === "ArrowDown") { event.preventDefault(); setSelected((value) => Math.min(value + 1, ordered.length - 1)); }
+    if (event.key === "ArrowUp") { event.preventDefault(); setSelected((value) => Math.max(value - 1, 0)); }
+    if (event.key === "Enter" && ordered[active]) { event.preventDefault(); paste(ordered[active]); }
   }
-
-  function togglePin(entry: ClipEntry, e: React.MouseEvent) {
-    e.stopPropagation();
-    invoke("pin_clipboard_entry", { id: entry.id, pinned: !entry.pinned }).then(refresh);
-  }
-
-  function remove(entry: ClipEntry, e: React.MouseEvent) {
-    e.stopPropagation();
-    invoke("delete_clipboard_entry", { id: entry.id }).then(refresh);
-  }
-
-  function clearHistory() {
-    invoke("clear_clipboard_history").then(() => {
-      setConfirmingClear(false);
-      refresh();
-    });
-  }
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      if (confirmingClear) {
-        setConfirmingClear(false);
-        return;
-      }
-      getCurrentWindow().hide();
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelected((s) => Math.min(s + 1, ordered.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelected((s) => Math.max(s - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const entry = ordered[selected];
-      if (entry) paste(entry);
-    }
-  }
-
-  function renderRow(entry: ClipEntry) {
-    const index = ordered.indexOf(entry);
-    const isSelected = index === selected;
-    const lines = lineCount(entry.text);
-    return (
-      <div
-        key={entry.id}
-        className={`clip-row${isSelected ? " clip-row-selected" : ""}`}
-        data-selected={isSelected}
-        onClick={() => paste(entry)}
-        onMouseEnter={() => setSelected(index)}
-      >
-        <div className="clip-body">
-          {entry.name && <span className="clip-name">{entry.name}</span>}
-          <span className="clip-preview">{preview(entry.text)}</span>
-          <span className="clip-meta">
-            {entry.pinned ? "Saved" : relativeTime(entry.copied_at)}
-            {lines > 1 && ` · ${lines} lines`}
-          </span>
-        </div>
-        <div className="clip-actions">
-          <button
-            className={`clip-icon-btn${entry.pinned ? " clip-icon-btn-on" : ""}`}
-            onClick={(e) => togglePin(entry, e)}
-            title={entry.pinned ? "Unpin" : "Pin to the top"}
-            aria-label={entry.pinned ? "Unpin" : "Pin to the top"}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M9 3h6l-.7 5.2 3.2 3.1H13v7l-1 2-1-2v-7H6.5l3.2-3.1L9 3Z" />
-            </svg>
-          </button>
-          <button
-            className="clip-icon-btn clip-icon-btn-danger"
-            onClick={(e) => remove(entry, e)}
-            title="Delete"
-            aria-label="Delete"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 7h14M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 11.1A1.5 1.5 0 0 0 8.8 19.5h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const nothingAtAll = entries.length === 0;
 
   return (
     <div className="clip-root" onKeyDown={onKeyDown}>
-      <header className="clip-head">
-        <input
-          ref={searchRef}
-          className="clip-search"
-          placeholder="Search everything you've copied…"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelected(0);
-          }}
-          autoFocus
-        />
+      <WindowChrome title="Clipboard" subtitle={paused ? "Capture paused" : `${entries.length} items`} compact />
+      <header className="clip-head sy-glass">
+        <label className="clip-search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m20 20-4.2-4.2m1.2-5.3a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" /></svg><input ref={searchRef} className="clip-search" aria-label="Search clipboard history" placeholder="Search clipboard" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} autoFocus /><kbd>Ctrl K</kbd></label>
+        <div className="clip-filters" aria-label="Filter clipboard">
+          {(["all", "text", "link", "image", "files"] as const).map((kind) => <button key={kind} className={filter === kind ? "clip-filter clip-filter-active" : "clip-filter"} onClick={() => { setFilter(kind); setSelected(0); }}>{kind === "all" ? "All" : kindLabel(kind)}</button>)}
+        </div>
+        {paused && <button className="clip-paused" onClick={() => invoke("open_settings", { section: "clipboard" })}><span /> Capture is paused · Open Settings</button>}
       </header>
 
       <div className="clip-list" ref={listRef}>
-        {nothingAtAll && (
-          <div className="clip-empty">
-            <p className="clip-empty-title">Nothing copied yet</p>
-            <p className="clip-empty-body">
-              Copy something anywhere on your machine and it will show up here. Pin the ones you
-              reuse and they'll stay at the top.
-            </p>
-          </div>
-        )}
-
-        {!nothingAtAll && ordered.length === 0 && (
-          <div className="clip-empty">
-            <p className="clip-empty-title">No matches for "{query.trim()}"</p>
-          </div>
-        )}
-
-        {pinned.length > 0 && <div className="clip-group">Pinned</div>}
-        {pinned.map(renderRow)}
-
-        {recent.length > 0 && <div className="clip-group">Recent</div>}
-        {recent.map(renderRow)}
+        {error && <div className="utility-error" role="alert"><p>{error}</p><button onClick={refresh}>Reload clipboard</button></div>}
+        {!error && !ordered.length && <div className="clip-empty"><span>⌘C</span><h2>{entries.length ? "No matching items" : "Your clipboard is ready"}</h2><p>{entries.length ? "Try another search or filter." : "Copy text, links, images, or files and they’ll appear here."}</p></div>}
+        {ordered.map((entry, index) => <article key={entry.id} className={index === active ? "clip-row clip-row-selected" : "clip-row"} data-selected={index === active} onMouseEnter={() => setSelected(index)} onClick={() => paste(entry)}>
+          <div className={`clip-kind clip-kind-${entry.kind}`} aria-hidden="true">{entry.kind === "text" ? "T" : entry.kind === "link" ? "↗" : entry.kind === "image" ? "▧" : "⌑"}</div>
+          <div className="clip-body"><div className="clip-preview">{preview(entry)}</div><div className="clip-meta"><span>{kindLabel(entry.kind)}</span><span>·</span><time>{relativeTime(entry.copied_at)}</time>{entry.kind === "files" && <><span>·</span><span>{entry.file_paths.length} {entry.file_paths.length === 1 ? "file" : "files"}</span></>}</div></div>
+          <div className="clip-actions"><button className={entry.pinned ? "clip-icon-btn clip-icon-btn-on" : "clip-icon-btn"} onClick={(event) => togglePin(entry, event)} aria-label={entry.pinned ? "Unpin" : "Pin"}>{entry.pinned ? "★" : "☆"}</button><button className="clip-icon-btn clip-icon-btn-danger" onClick={(event) => remove(entry, event)} aria-label="Delete">×</button></div>
+        </article>)}
       </div>
 
-      <footer className="clip-foot">
-        <span className="clip-hint">↑↓ to move · enter to paste · esc to close</span>
-        {/* Two-step, because this is unrecoverable. The label says exactly what
-            survives, so nobody discovers afterwards that their pinned items
-            were counted as "history". */}
-        {confirmingClear ? (
-          <span className="clip-confirm">
-            <button className="clip-text-btn clip-text-btn-danger" onClick={clearHistory}>
-              Delete {recent.length} item{recent.length === 1 ? "" : "s"}
-            </button>
-            <button className="clip-text-btn" onClick={() => setConfirmingClear(false)}>
-              Cancel
-            </button>
-          </span>
-        ) : (
-          <button
-            className="clip-text-btn"
-            onClick={() => setConfirmingClear(true)}
-            disabled={recent.length === 0}
-          >
-            Clear history
-          </button>
-        )}
-      </footer>
+      <footer className="clip-foot"><span><kbd>↑↓</kbd> Navigate</span><span><kbd>Enter</kbd> Paste</span><span><kbd>Space</kbd> Quick Look</span><button onClick={() => invoke("clear_clipboard_history").then(refresh)} disabled={!entries.some((entry) => !entry.pinned)}>Clear</button></footer>
+
+      {quickLook && <div className="clip-quicklook" onClick={() => setQuickLook(null)} role="dialog" aria-modal="true" aria-label="Clipboard preview"><div className="clip-quicklook-card" onClick={(event) => event.stopPropagation()}><header><span>{kindLabel(quickLook.kind)}</span><button onClick={() => setQuickLook(null)} aria-label="Close preview">×</button></header>{quickLook.kind === "image" ? <ClipImage id={quickLook.id} /> : quickLook.kind === "files" ? <ul>{quickLook.file_paths.map((path) => <li key={path}>{path}</li>)}</ul> : <pre>{quickLook.text}</pre>}<footer><button onClick={() => paste(quickLook)}>Paste</button></footer></div></div>}
     </div>
   );
 }

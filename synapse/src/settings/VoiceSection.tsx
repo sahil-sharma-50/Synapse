@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { formatBytes, useModelDownload } from "../modelDownload";
 import { useTtsSetup } from "../ttsSetup";
 import { ASR_MODEL, TTS_ENGINE, TTS_VOICES, type Settings } from "../models";
@@ -11,6 +14,42 @@ interface VoiceSectionProps {
 export default function VoiceSection({ settings, onChange }: VoiceSectionProps) {
   const model = useModelDownload();
   const tts = useTtsSetup();
+  const [voiceChoice, setVoiceChoice] = useState(settings.tts.voice);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const previewGeneration = useRef<number | null>(null);
+
+  useEffect(() => {
+    const listeners = [
+      listen<number>("tts-ended", (event) => {
+        if (event.payload === previewGeneration.current) {
+          previewGeneration.current = null;
+          setPreviewing(false);
+        }
+      }),
+      listen<string>("tts-error", (event) => {
+        setPreviewing(false);
+        setPreviewError(event.payload);
+      }),
+    ];
+    return () => {
+      listeners.forEach((listener) => listener.then((unlisten) => unlisten()));
+    };
+  }, []);
+
+  function previewVoice() {
+    setPreviewError("");
+    setPreviewing(true);
+    invoke<number>("preview_voice", { voice: voiceChoice })
+      .then((generation) => {
+        previewGeneration.current = generation;
+      })
+      .catch((error) => {
+        previewGeneration.current = null;
+        setPreviewing(false);
+        setPreviewError(String(error));
+      });
+  }
 
   return (
     <div className="set-section">
@@ -50,7 +89,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             <div className={`set-meter ${model.known ? "" : "set-meter-idle"}`}>
               <div
                 className="set-meter-fill"
-                style={model.known ? { width: `${model.percent}%` } : undefined}
+                style={model.known ? { "--meter-progress": model.percent / 100 } as React.CSSProperties : undefined}
               />
             </div>
             <div className="set-progress-foot">
@@ -63,7 +102,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             </div>
           </div>
         )}
-        {model.error && <div className="set-card-row set-error">{model.error}</div>}
+        {model.error && <div className="set-card-row set-error" role="alert">{model.error}</div>}
 
         <label className="set-card-row">
           <span className="set-row-icon">
@@ -126,7 +165,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             <div className={`set-meter ${tts.known ? "" : "set-meter-idle"}`}>
               <div
                 className="set-meter-fill"
-                style={tts.known ? { width: `${tts.percent}%` } : undefined}
+                style={tts.known ? { "--meter-progress": tts.percent / 100 } as React.CSSProperties : undefined}
               />
             </div>
             <div className="set-progress-foot">
@@ -137,7 +176,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             </div>
           </div>
         )}
-        {tts.error && <div className="set-card-row set-error">{tts.error}</div>}
+        {tts.error && <div className="set-card-row set-error" role="alert">{tts.error}</div>}
 
         <label className="set-card-row">
           <span className="set-row-icon">
@@ -149,12 +188,12 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               <span className="set-sublabel">Install the engine above to choose a voice</span>
             )}
           </span>
-          <div className="set-control">
+          <div className="set-control set-voice-control">
             <select
               className="set-input"
               disabled={!tts.ready}
-              value={settings.tts.voice}
-              onChange={(e) => onChange({ ...settings, tts: { ...settings.tts, voice: e.target.value } })}
+              value={voiceChoice}
+              onChange={(e) => setVoiceChoice(e.target.value)}
             >
               {TTS_VOICES.map((v) => (
                 <option key={v} value={v}>
@@ -162,8 +201,19 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
                 </option>
               ))}
             </select>
+            <button className="set-btn set-btn-quiet" disabled={!tts.ready || previewing} onClick={previewVoice}>
+              {previewing ? "Playing…" : "Preview"}
+            </button>
+            <button
+              className="set-btn"
+              disabled={!tts.ready || voiceChoice === settings.tts.voice}
+              onClick={() => onChange({ ...settings, tts: { ...settings.tts, voice: voiceChoice } })}
+            >
+              Use voice
+            </button>
           </div>
         </label>
+        {previewError && <div className="set-card-row set-error" role="alert">{previewError}</div>}
       </div>
       <p className="set-hint">
         Used by "Speak Selected Text" and by the AI when it answers out loud. Without it, Synapse

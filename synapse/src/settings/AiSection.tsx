@@ -35,35 +35,40 @@ export default function AiSection({
   // Local-only UI state for the custom-model text field. Kept separate from
   // `settings` so typing doesn't write settings.json (and broadcast
   // `settings-changed`) on every keystroke — only a debounced commit or blur
-  // does. `customPicked` tracks "user just chose Custom… from the dropdown"
-  // before they've typed anything, so the field can appear without ever
-  // persisting an empty model string.
-  const [customPicked, setCustomPicked] = useState(false);
-  const [customDraft, setCustomDraft] = useState(isCustom ? model : "");
+  // does. `customPickedProvider` tracks a provider where the user just chose
+  // "Custom…" before they've typed anything, so the field can appear without
+  // ever persisting an empty model string.
+  const [customDrafts, setCustomDrafts] = useState<Partial<Record<Provider, string>>>({});
+  const [customPickedProvider, setCustomPickedProvider] = useState<Provider | null>(null);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Switching provider swaps which model this UI is editing, so the local
-  // draft has to be re-derived for the new provider rather than carrying
-  // over stale text from the previous one.
-  useEffect(() => {
-    setCustomPicked(false);
-    setCustomDraft(isCustom ? model : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  // A provider-keyed draft keeps switching providers from carrying stale text
+  // into the next model field.
+  const customDraft = customDrafts[provider] ?? (isCustom ? model : "");
+  const showCustomField = isCustom || customPickedProvider === provider;
+
+  function clearCommitTimer() {
+    if (commitTimer.current) {
+      clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+    }
+  }
 
   useEffect(() => {
     return () => {
-      if (commitTimer.current) clearTimeout(commitTimer.current);
+      clearCommitTimer();
     };
   }, []);
 
   function refreshStatus() {
-    invoke<Record<Provider, boolean>>("provider_status").then(setStatus);
+    invoke<Record<Provider, boolean>>("provider_status").then(setStatus).catch((e) => setError(String(e)));
   }
 
   useEffect(refreshStatus, []);
 
   function setProvider(next: Provider) {
+    clearCommitTimer();
+    setCustomPickedProvider(null);
     onChange({ ...settings, ai: { ...settings.ai, provider: next } });
   }
 
@@ -73,14 +78,18 @@ export default function AiSection({
   }
 
   function selectModel(value: string) {
+    clearCommitTimer();
     if (value === CUSTOM) {
       // Reveal the custom field without persisting an empty model string —
       // only committing actual typed text should trigger a settings write.
-      setCustomPicked(true);
-      setCustomDraft(isCustom ? model : "");
+      setCustomPickedProvider(provider);
+      setCustomDrafts((drafts) => ({
+        ...drafts,
+        [provider]: drafts[provider] ?? (isCustom ? model : ""),
+      }));
       return;
     }
-    setCustomPicked(false);
+    setCustomPickedProvider(null);
     setModel(value);
   }
 
@@ -93,17 +102,15 @@ export default function AiSection({
   }
 
   function onCustomInput(value: string) {
-    setCustomDraft(value);
-    if (commitTimer.current) clearTimeout(commitTimer.current);
+    setCustomDrafts((drafts) => ({ ...drafts, [provider]: value }));
+    clearCommitTimer();
     commitTimer.current = setTimeout(() => commitCustom(value), 400);
   }
 
   function onCustomBlur() {
-    if (commitTimer.current) clearTimeout(commitTimer.current);
+    clearCommitTimer();
     commitCustom(customDraft);
   }
-
-  const showCustomField = isCustom || customPicked;
 
   async function saveKey() {
     if (!keyInput.trim()) return;
@@ -212,6 +219,9 @@ export default function AiSection({
             <input
               className="set-input"
               type="password"
+              aria-label={`${PROVIDER_LABELS[provider]} API key`}
+              autoComplete="off"
+              spellCheck={false}
               placeholder={`${PROVIDER_LABELS[provider]} API key`}
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
@@ -229,7 +239,7 @@ export default function AiSection({
         </div>
       </div>
 
-      {error && <div className="set-error">{error}</div>}
+      {error && <div className="set-error" role="alert">{error}</div>}
       <p className="set-hint">
         Keys are stored in the Windows Credential Manager, never in Synapse's
         settings file.

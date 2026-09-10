@@ -6,6 +6,7 @@ import type { Settings } from "./models";
 import { formatBytes, useModelDownload } from "./modelDownload";
 import { useTtsSetup } from "./ttsSetup";
 import logo from "./assets/synapse.png";
+import { MicIcon, SparkleIcon, NoteIcon } from "./settings/icons";
 import "./Onboarding.css";
 
 const STEPS = ["welcome", "mic", "model", "voice-engine", "done"] as const;
@@ -15,21 +16,22 @@ type MicState = "idle" | "checking" | "granted" | "denied";
 const STEP_LABELS: Record<Step, string> = {
   welcome: "Welcome",
   mic: "Microphone",
-  model: "Model",
-  "voice-engine": "Voice",
+  model: "Dictation",
+  "voice-engine": "Read aloud",
   done: "Finish",
 };
 
 const FEATURES = [
-  { icon: "🎙", title: "Dictate anywhere", body: "Speak and the text lands in whatever you're typing in." },
-  { icon: "✨", title: "Ask AI in place", body: "Send a prompt or a screenshot and insert the answer." },
-  { icon: "📝", title: "Notes & clipboard", body: "Sticky notes and everything you've copied, one hotkey away." },
+  { icon: MicIcon, title: "Dictate anywhere", body: "Turn speech into text on your computer." },
+  { icon: SparkleIcon, title: "Ask AI in place", body: "Connect your AI provider in Settings to get started." },
+  { icon: NoteIcon, title: "Notes & clipboard", body: "Keep notes and copied text within reach." },
 ];
 
 export default function Onboarding() {
   const [step, setStep] = useState<Step>("welcome");
   const [micState, setMicState] = useState<MicState>("idle");
   const [finishError, setFinishError] = useState("");
+  const [finishing, setFinishing] = useState(false);
   const model = useModelDownload();
   const tts = useTtsSetup();
 
@@ -46,6 +48,8 @@ export default function Onboarding() {
   }
 
   async function finish() {
+    if (finishing) return;
+    setFinishing(true);
     setFinishError("");
     try {
       const settings = await invoke<Settings>("get_settings");
@@ -57,6 +61,7 @@ export default function Onboarding() {
     } catch (e) {
       console.error("[synapse] failed to finish onboarding:", e);
       setFinishError(String(e));
+      setFinishing(false);
     }
   }
 
@@ -64,13 +69,14 @@ export default function Onboarding() {
     <div className="ob-root">
       <header className="ob-head">
         <span className="ob-brand">Synapse</span>
-        <ol className="ob-steps">
+        <ol className="ob-steps" aria-label="Setup progress">
           {STEPS.map((s, i) => (
             <li
               key={s}
               className={`ob-dot ${i < stepIndex ? "ob-dot-done" : ""} ${i === stepIndex ? "ob-dot-now" : ""}`}
               title={STEP_LABELS[s]}
-            />
+              aria-current={s === step ? "step" : undefined}
+            ><span>{i + 1}</span>{STEP_LABELS[s]}</li>
           ))}
         </ol>
       </header>
@@ -91,7 +97,7 @@ export default function Onboarding() {
               {FEATURES.map((f) => (
                 <li className="ob-feature" key={f.title}>
                   <span className="ob-feature-icon" aria-hidden="true">
-                    {f.icon}
+                    <f.icon />
                   </span>
                   <div>
                     <p className="ob-feature-title">{f.title}</p>
@@ -135,7 +141,7 @@ export default function Onboarding() {
                   ? "Synapse can record audio for transcription."
                   : micState === "denied"
                     ? "Windows is blocking microphone access. Turn Synapse on under Privacy & security → Microphone, then check again."
-                    : "Clicking this opens Windows' own microphone prompt. You can also skip and do it later."}
+                    : "Check whether Synapse can use your microphone. You can also continue and set this up later."}
               </p>
               {micState === "denied" && (
                 <button className="ob-btn ob-btn-quiet ob-btn-sm" onClick={() => openUrl("ms-settings:privacy-microphone")}>
@@ -174,7 +180,7 @@ export default function Onboarding() {
                   <div className={`ob-meter ${model.known ? "" : "ob-meter-idle"}`}>
                     <div
                       className="ob-meter-fill"
-                      style={model.known ? { width: `${model.percent}%` } : undefined}
+                      style={model.known ? { "--meter-progress": model.percent / 100 } as React.CSSProperties : undefined}
                     />
                   </div>
                   <div className="ob-meter-foot">
@@ -237,7 +243,7 @@ export default function Onboarding() {
                   <div className={`ob-meter ${tts.known ? "" : "ob-meter-idle"}`}>
                     <div
                       className="ob-meter-fill"
-                      style={tts.known ? { width: `${tts.percent}%` } : undefined}
+                      style={tts.known ? { "--meter-progress": tts.percent / 100 } as React.CSSProperties : undefined}
                     />
                   </div>
                   {tts.known && (
@@ -270,10 +276,15 @@ export default function Onboarding() {
             <div className="ob-hero">
               <img className="ob-hero-mark" src={logo} alt="" />
             </div>
-            <h1 className="ob-title">You're all set</h1>
+            <h1 className="ob-title">Synapse is within reach</h1>
             <p className="ob-text">
               Synapse keeps running in the background. Nothing stays on screen until you call it.
             </p>
+            <div className="ob-readiness" role="status">
+              <p><span>Dictation model</span><strong>{model.ready ? "Installed" : model.downloading ? "Downloading in background" : "Set up in Settings → Voice"}</strong></p>
+              <p><span>Microphone</span><strong>{micState === "granted" ? "Access confirmed" : "Access not confirmed"}</strong></p>
+              <p><span>Read aloud</span><strong>{tts.ready ? "Installed" : tts.downloading ? "Installing in background" : "Optional · not installed"}</strong></p>
+            </div>
             <ul className="ob-keys">
               <li>
                 <span>
@@ -289,10 +300,10 @@ export default function Onboarding() {
                   <kbd className="ob-kbd">Alt</kbd>
                   <kbd className="ob-kbd">D</kbd>
                 </span>
-                Start dictating right away
+                Dictation shortcut
               </li>
             </ul>
-            {finishError && <div className="ob-error">{finishError}</div>}
+            {finishError && <div className="ob-error" role="alert">{finishError}</div>}
           </div>
         )}
       </main>
@@ -307,8 +318,8 @@ export default function Onboarding() {
         )}
 
         {step === "done" ? (
-          <button className="ob-btn" onClick={finish}>
-            Finish
+          <button className="ob-btn" onClick={finish} disabled={finishing}>
+            {finishing ? "Finishing…" : "Start using Synapse"}
           </button>
         ) : (
           <button className="ob-btn" onClick={() => setStep(STEPS[stepIndex + 1])}>

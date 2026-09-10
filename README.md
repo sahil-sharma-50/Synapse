@@ -10,7 +10,7 @@ Windows is the supported and tested platform. macOS code paths exist but are cur
 
 ## Download
 
-**[Download the latest Windows installer](https://github.com/sahil-sharma-50/Synapse/releases/latest)** — grab `Synapse_0.1.1_x64-setup.exe` from the Releases page and run it. No need to clone the repo or build from source. The installer's first-run onboarding wizard downloads the speech-to-text model automatically.
+**[Download the latest Windows installer](https://github.com/sahil-sharma-50/Synapse/releases/latest)** — grab the `Synapse_*_x64-setup.exe` asset and run it. First-run setup guides you through microphone access and optional speech downloads. You can skip downloads and start them later in Settings → Voice.
 
 ## Features
 
@@ -47,15 +47,17 @@ npm run tauri dev
 
 This starts the Vite dev server and launches the Tauri app window. On first run, grant any OS permissions prompted (microphone access, accessibility, etc.) for dictation and text injection to work.
 
-To build a production bundle (produces `synapse/src-tauri/target/release/bundle/nsis/Synapse_0.1.1_x64-setup.exe` on Windows):
+To build a production bundle (produces the versioned installer in `synapse/src-tauri/target/release/bundle/nsis/` on Windows):
 
 ```bash
 npm run tauri build
 ```
 
+Release builds require `TAURI_SIGNING_PRIVATE_KEY` for updater artifacts. For a local installer without updater signing, use `npm run tauri build -- --config src-tauri/tauri.pr-build.conf.json`.
+
 ## Speech-to-Text model
 
-Local dictation uses the [Parakeet TDT 0.6B v2](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx) ONNX model (int8 variant, ~630 MB). It isn't checked into this repo. On first run, the onboarding wizard downloads it into `synapse/src-tauri/model/` automatically (resumable, with a progress meter) — no manual steps needed, whether you're running `npm run tauri dev` or the installed app.
+Local dictation uses the [Parakeet TDT 0.6B v2](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx) ONNX model (int8 variant, ~630 MB). It isn't checked into this repo. Start the resumable download during setup or in Settings → Voice. Models are stored under `%APPDATA%\com.synapse.app\model\` on Windows.
 
 `synapse/src-tauri/model/` is gitignored, so this happens once per machine.
 

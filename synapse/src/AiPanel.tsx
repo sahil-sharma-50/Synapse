@@ -44,8 +44,11 @@ export default function AiPanel() {
 
   const streamRef = useRef("");
   const stateRef = useRef<OrbState>("idle");
-  stateRef.current = state;
   const transcriptRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const refresh = useCallback(() => {
     invoke<Settings>("get_settings").then((s) => {
@@ -221,7 +224,7 @@ export default function AiPanel() {
       </div>
 
       <div className="orb-transcript" ref={transcriptRef}>
-        {error && <div className="orb-error">{error}</div>}
+        {error && <div className="orb-error" role="alert">{error}</div>}
 
         {!hasKey && !error && (
           <div className="orb-empty">

@@ -1,0 +1,76 @@
+@import "./theme.css";
+
+.window-chrome {
+  position: relative;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  min-height: var(--sy-titlebar-h);
+  padding-left: var(--sy-6);
+  color: var(--sy-text-dim);
+  background: linear-gradient(180deg, rgba(31, 43, 65, 0.88), rgba(13, 19, 31, 0.82));
+  border-bottom: 1px solid var(--sy-border);
+  user-select: none;
+}
+
+.window-chrome-title {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: var(--sy-4);
+  font-size: var(--sy-fs-sm);
+  font-weight: var(--sy-fw-semi);
+}
+
+.window-chrome-title small {
+  overflow: hidden;
+  color: var(--sy-text-faint);
+  font-size: var(--sy-fs-xs);
+  font-weight: var(--sy-fw-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-chrome-actions {
+  align-self: stretch;
+  display: flex;
+  margin-left: auto;
+}
+
+.window-chrome-actions button {
+  width: var(--sy-caption-button-w);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+}
+
+.window-chrome-actions button:hover {
+  background: var(--sy-hover);
+  color: var(--sy-text);
+}
+
+.window-chrome-actions .window-chrome-close:hover {
+  background: var(--sy-close);
+  color: var(--sy-white);
+}
+
+.window-chrome-actions svg {
+  width: var(--sy-5);
+  height: var(--sy-5);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.window-chrome-compact {
+  min-height: var(--sy-titlebar-compact-h);
+}
+
+@media (forced-colors: active) {
+  .window-chrome {
+    background: Canvas;
+    border-color: CanvasText;
+  }
+}

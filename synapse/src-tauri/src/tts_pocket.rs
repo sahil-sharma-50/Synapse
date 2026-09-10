@@ -14,6 +14,8 @@ pub struct SidecarResponse {
     pub status: String,
     #[serde(default)]
     pub message: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 /// One JSON object per line on the sidecar's stdin — no trailing newline
@@ -24,6 +26,10 @@ pub fn encode_request(req: &SidecarRequest) -> String {
 
 pub fn decode_response(line: &str) -> Result<SidecarResponse, String> {
     serde_json::from_str(line).map_err(|e| format!("bad sidecar response: {e}"))
+}
+
+pub fn is_ready_handshake(response: &SidecarResponse) -> bool {
+    response.id == 0 && response.status == "ready"
 }
 
 /// True when `response_id` answers the most recently sent request. A `false`
@@ -213,6 +219,7 @@ impl Default for TtsSidecar {
                         }
                     }
                     Some(PlaybackCommand::EndOfUtterance { generation }) if generation >= st.generation => {
+                        println!("[synapse] tts audio end marker generation={generation}");
                         st.end_signalled = true;
                     }
                     // An End for an utterance we have already moved past.
@@ -263,6 +270,7 @@ fn enqueue_clip(st: &mut AudioState, path: &std::path::Path) -> Result<(), Strin
 /// Emits `tts-ended` exactly once per `tts-started` and cleans up the temp
 /// WAVs, which are only safe to unlink now that nothing is decoding them.
 fn finish_utterance(st: &mut AudioState, app: &AppSlot) {
+    println!("[synapse] tts finished generation={}", st.generation);
     for path in st.temp_paths.drain(..) {
         let _ = std::fs::remove_file(path);
     }
@@ -312,18 +320,19 @@ impl TtsSidecar {
                         if !is_current(job.generation, sidecar.generation.load(Ordering::SeqCst)) {
                             continue;
                         }
-                        match sidecar.synthesize(&job) {
-                            Ok(path) => {
-                                // Check 2: the utterance may have been barged
-                                // in on while we were synthesizing.
-                                if !is_current(job.generation, sidecar.generation.load(Ordering::SeqCst)) {
-                                    let _ = std::fs::remove_file(&path);
-                                    continue;
-                                }
-                                let _ = audio_tx.send(PlaybackCommand::Enqueue {
-                                    generation: job.generation,
-                                    path,
-                                });
+                        let started = std::time::Instant::now();
+                        match sidecar.synthesize(&job, |path| {
+                            let _ = audio_tx.send(PlaybackCommand::Enqueue {
+                                generation: job.generation,
+                                path,
+                            });
+                        }) {
+                            Ok(()) => {
+                                println!(
+                                    "[synapse] tts synthesized generation={} in {}ms",
+                                    job.generation,
+                                    started.elapsed().as_millis()
+                                );
                             }
                             Err(e) => {
                                 eprintln!("[synapse] tts synthesis failed: {e}");
@@ -381,6 +390,12 @@ impl TtsSidecar {
         }
     }
 
+    /// Starts Python and waits for its model-ready handshake. Run this on a
+    /// background thread during setup so the first spoken phrase stays fast.
+    pub fn warm_up(&self, python_path: &std::path::Path, sidecar_path: &std::path::Path) -> Result<(), String> {
+        self.ensure_process(python_path, sidecar_path)
+    }
+
     fn ensure_process(&self, python_path: &std::path::Path, sidecar_path: &std::path::Path) -> Result<(), String> {
         let mut guard = self.process.lock().map_err(|_| "sidecar lock poisoned")?;
         if guard.is_some() {
@@ -402,10 +417,30 @@ impl TtsSidecar {
         let mut child = cmd.spawn().map_err(|e| format!("failed to start tts sidecar: {e}"))?;
         let stdin = child.stdin.take().ok_or("sidecar stdin unavailable")?;
         let stdout = child.stdout.take().ok_or("sidecar stdout unavailable")?;
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut stdout = BufReader::new(stdout);
+            let mut line = String::new();
+            let result = stdout.read_line(&mut line).map_err(|e| e.to_string());
+            let _ = ready_tx.send((stdout, result, line));
+        });
+        let (stdout, result, line) = match ready_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(value) => value,
+            Err(_) => {
+                let _ = child.kill();
+                return Err("sidecar timed out while loading the voice model".to_string());
+            }
+        };
+        result?;
+        let response = decode_response(line.trim())?;
+        if !is_ready_handshake(&response) {
+            let _ = child.kill();
+            return Err("sidecar did not report ready after loading the voice model".to_string());
+        }
         *guard = Some(SidecarProcess {
             child,
             stdin,
-            stdout: Some(BufReader::new(stdout)),
+            stdout: Some(stdout),
         });
         Ok(())
     }
@@ -418,7 +453,7 @@ impl TtsSidecar {
     /// `process` mutex is uncontended. A dead sidecar (write/read failure)
     /// clears the cached process so the next call respawns it, and is surfaced
     /// as an `Err` for the caller to fall back to OS-native TTS.
-    fn synthesize(&self, job: &SynthJob) -> Result<std::path::PathBuf, String> {
+    fn synthesize(&self, job: &SynthJob, mut on_chunk: impl FnMut(std::path::PathBuf)) -> Result<(), String> {
         self.ensure_process(&job.python, &job.script)?;
 
         // The sidecar protocol id is its own sequence: it pairs a response line
@@ -443,11 +478,15 @@ impl TtsSidecar {
         // `write_and_read` error, which clears the cached process below so
         // the next call respawns a fresh sidecar instead of staying stuck.
         const SIDECAR_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-        let write_and_read = || -> Result<SidecarResponse, String> {
+        {
             let mut guard = self.process.lock().map_err(|_| "sidecar lock poisoned")?;
             let proc = guard.as_mut().ok_or("sidecar not running")?;
             writeln!(proc.stdin, "{}", encode_request(&request)).map_err(|e| e.to_string())?;
+        }
 
+        let read_response = || -> Result<SidecarResponse, String> {
+            let mut guard = self.process.lock().map_err(|_| "sidecar lock poisoned")?;
+            let proc = guard.as_mut().ok_or("sidecar not running")?;
             // `BufReader<ChildStdout>` can't be read from two threads at
             // once, so temporarily hand ownership of just the stdout buffer
             // to the reader thread (via `.take()`) and reclaim it afterward.
@@ -478,42 +517,47 @@ impl TtsSidecar {
             }
         };
 
-        let response = match write_and_read() {
-            Ok(r) => r,
-            Err(e) => {
-                // Drop the dead process so the next call respawns it. A
-                // write/read failure (including a timeout) does not imply
-                // the child has actually exited — `Child::drop` does not
-                // kill the OS process, so an unresponsive sidecar would
-                // otherwise be silently abandoned/orphaned (still running,
-                // still holding a loaded model) with nothing left able to
-                // reach it, since `self.process` is about to be cleared.
-                // Killing first (best-effort; a harmless no-op if the
-                // process already exited) also unblocks the leaked reader
-                // thread on the timeout path by closing its stdout pipe.
-                if let Ok(mut guard) = self.process.lock() {
-                    if let Some(mut proc) = guard.take() {
-                        let _ = proc.child.kill();
+        loop {
+            let response = match read_response() {
+                Ok(r) => r,
+                Err(e) => {
+                    // Drop the dead process so the next call respawns it. A
+                    // write/read failure (including a timeout) does not imply
+                    // the child has actually exited — `Child::drop` does not
+                    // kill the OS process, so an unresponsive sidecar would
+                    // otherwise be silently abandoned/orphaned (still running,
+                    // still holding a loaded model) with nothing left able to
+                    // reach it, since `self.process` is about to be cleared.
+                    // Killing first (best-effort; a harmless no-op if the
+                    // process already exited) also unblocks the leaked reader
+                    // thread on the timeout path by closing its stdout pipe.
+                    if let Ok(mut guard) = self.process.lock() {
+                        if let Some(mut proc) = guard.take() {
+                            let _ = proc.child.kill();
+                        }
                     }
+                    return Err(e);
                 }
-                return Err(e);
+            };
+
+            // Pairs the response line with the request we just sent. Requests are
+            // strictly serial on this one worker, so a mismatch means the sidecar's
+            // stream has desynchronised and the process is no longer trustworthy.
+            if !is_current(response.id, request_id) {
+                return Err("sidecar response did not match its request".to_string());
             }
-        };
 
-        // Pairs the response line with the request we just sent. Requests are
-        // strictly serial on this one worker, so a mismatch means the sidecar's
-        // stream has desynchronised and the process is no longer trustworthy.
-        if !is_current(response.id, request_id) {
-            let _ = std::fs::remove_file(&out_path);
-            return Err("sidecar response did not match its request".to_string());
+            match response.status.as_str() {
+                "chunk" => {
+                    let path = response.path.ok_or("sidecar audio chunk had no path")?;
+                    on_chunk(std::path::PathBuf::from(path));
+                }
+                "ok" => return Ok(()),
+                _ => {
+                    return Err(response.message.unwrap_or_else(|| "tts synthesis failed".to_string()));
+                }
+            }
         }
-
-        if response.status != "ok" {
-            let _ = std::fs::remove_file(&out_path);
-            return Err(response.message.unwrap_or_else(|| "tts synthesis failed".to_string()));
-        }
-
-        Ok(out_path)
     }
 }
 
@@ -544,10 +588,24 @@ mod tests {
     }
 
     #[test]
+    fn recognises_the_sidecar_ready_handshake() {
+        let response = decode_response(r#"{"id":0,"status":"ready"}"#).expect("valid response");
+        assert!(is_ready_handshake(&response));
+    }
+
+    #[test]
     fn decodes_error_response_with_message() {
         let response = decode_response(r#"{"id":3,"status":"error","message":"boom"}"#).expect("valid response");
         assert_eq!(response.status, "error");
         assert_eq!(response.message, Some("boom".to_string()));
+    }
+
+    #[test]
+    fn decodes_streaming_audio_chunk_path() {
+        let response =
+            decode_response(r#"{"id":7,"status":"chunk","path":"C:\\tmp\\part-0.wav"}"#).expect("valid chunk response");
+        assert_eq!(response.status, "chunk");
+        assert_eq!(response.path.as_deref(), Some(r"C:\tmp\part-0.wav"));
     }
 
     #[test]

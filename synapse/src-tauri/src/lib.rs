@@ -8,6 +8,7 @@ mod notes;
 mod screenshot;
 mod sentences;
 mod settings;
+mod storage;
 mod tts;
 mod tts_pocket;
 mod tts_setup;
@@ -43,6 +44,16 @@ const FRESH_INSTALL_MARKER: &str = ".fresh-install";
 // the window. Without it the shadow clips at the window edge and reads as a
 // visible rectangle around the circle.
 const OVERLAY_SIZE: f64 = 360.0;
+
+#[cfg(target_os = "windows")]
+fn apply_utility_glass(window: &tauri::WebviewWindow) {
+    if let Err(error) = window_vibrancy::apply_acrylic(window, Some((24, 29, 39, 188))) {
+        eprintln!("[synapse] acrylic unavailable for {}: {error}", window.label());
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_utility_glass(_window: &tauri::WebviewWindow) {}
 
 /// The HWND (as isize) of whatever app was focused right before the overlay
 /// was summoned. Restored just before any text injection (M2+) so dictated
@@ -373,12 +384,12 @@ fn show_utility_window(app: &tauri::AppHandle, label: &str) {
         );
         return;
     };
-    if let Err(e) = window.show() {
-        eprintln!("[synapse] show_utility_window({label}): show failed: {e}");
-    }
-    if let Err(e) = window.set_focus() {
-        eprintln!("[synapse] show_utility_window({label}): set_focus failed: {e}");
-    }
+    show_foreground(&window);
+    // A window created hidden does not always expose its native HWND in the
+    // same message-loop tick as show(). Give WebView2 one frame before asking
+    // window-vibrancy to attach the Acrylic backdrop.
+    std::thread::sleep(std::time::Duration::from_millis(16));
+    apply_utility_glass(&window);
 }
 
 fn note_label(id: &str) -> String {
@@ -453,6 +464,7 @@ fn open_note_window(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .title(note.title())
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .min_inner_size(220.0, 160.0)
@@ -492,6 +504,7 @@ fn open_note_window(app: tauri::AppHandle, id: String) -> Result<(), String> {
         _ => {}
     });
 
+    apply_utility_glass(&window);
     show_foreground(&window);
     let _ = app.emit("notes-changed", ());
     Ok(())
@@ -517,6 +530,10 @@ fn list_notes(app: tauri::AppHandle) -> Result<Vec<NoteSummary>, String> {
             color: n.color,
             open: n.open,
             updated_at: n.updated_at,
+            favorite: n.favorite,
+            folder: n.folder,
+            tags: n.tags,
+            trashed_at: n.trashed_at,
         })
         .collect())
 }
@@ -531,6 +548,10 @@ struct NoteSummary {
     color: String,
     open: bool,
     updated_at: i64,
+    favorite: bool,
+    folder: Option<String>,
+    tags: Vec<String>,
+    trashed_at: Option<i64>,
 }
 
 /// Write to an explicit path the user picked in a file dialog, rather than to
@@ -553,10 +574,46 @@ fn get_note(app: tauri::AppHandle, id: String) -> Result<notes::Note, String> {
 }
 
 #[tauri::command]
-fn create_note(app: tauri::AppHandle, color: Option<String>) -> Result<String, String> {
+fn create_note(app: tauri::AppHandle, color: Option<String>, quick: Option<bool>) -> Result<String, String> {
     let note = notes::create(&app, color)?;
-    open_note_window(app, note.id.clone())?;
+    if quick.unwrap_or(false) {
+        open_note_window(app, note.id.clone())?;
+    }
     Ok(note.id)
+}
+
+#[tauri::command]
+fn save_note_document(
+    app: tauri::AppHandle,
+    id: String,
+    document: String,
+    plain_text: String,
+    expected_revision: u64,
+) -> Result<u64, String> {
+    let revision = notes::update_document(&app, &id, document, plain_text, expected_revision)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(revision)
+}
+
+#[tauri::command]
+fn favorite_note(app: tauri::AppHandle, id: String, favorite: bool) -> Result<(), String> {
+    notes::set_favorite(&app, &id, favorite)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn trash_note(app: tauri::AppHandle, id: String, trashed: bool) -> Result<(), String> {
+    notes::move_to_trash(&app, &id, trashed)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn organize_note(app: tauri::AppHandle, id: String, folder: Option<String>, tags: Vec<String>) -> Result<(), String> {
+    notes::organize(&app, &id, folder, tags)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -590,6 +647,11 @@ fn close_note_window(app: tauri::AppHandle, id: String) {
 }
 
 #[tauri::command]
+fn open_notes_hub(app: tauri::AppHandle) {
+    show_utility_window(&app, NOTES_HUB_LABEL);
+}
+
+#[tauri::command]
 fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(&note_label(&id)) {
         let _ = window.destroy();
@@ -607,6 +669,28 @@ fn delete_note(app: tauri::AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 fn list_clipboard(app: tauri::AppHandle) -> Result<Vec<clipboard_history::ClipEntry>, String> {
     clipboard_history::list(&app)
+}
+
+#[derive(serde::Serialize)]
+struct ClipboardStats {
+    total_items: usize,
+    pinned_items: usize,
+    storage_bytes: u64,
+}
+
+#[tauri::command]
+fn clipboard_stats(app: tauri::AppHandle) -> Result<ClipboardStats, String> {
+    let entries = clipboard_history::list(&app)?;
+    Ok(ClipboardStats {
+        total_items: entries.len(),
+        pinned_items: entries.iter().filter(|entry| entry.pinned).count(),
+        storage_bytes: clipboard_history::storage_bytes(&app)?,
+    })
+}
+
+#[tauri::command]
+fn clipboard_asset(app: tauri::AppHandle, id: String) -> Result<Vec<u8>, String> {
+    clipboard_history::asset_bytes(&app, &id)
 }
 
 #[tauri::command]
@@ -655,6 +739,21 @@ fn insert_clip(app: tauri::AppHandle, content: String) {
         restore_previous_focus();
         if let Err(e) = inject::paste_text(&app, &content) {
             eprintln!("[synapse] clipboard paste failed: {e}");
+        }
+    });
+}
+
+#[tauri::command]
+fn insert_clipboard_entry(app: tauri::AppHandle, id: String) {
+    if let Some(window) = app.get_webview_window(CLIPBOARD_LABEL) {
+        let _ = window.hide();
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        #[cfg(target_os = "windows")]
+        restore_previous_focus();
+        if let Err(error) = clipboard_history::paste_entry(&app, &id) {
+            eprintln!("[synapse] clipboard item paste failed: {error}");
         }
     });
 }
@@ -829,6 +928,26 @@ fn tts_setup_status(app: tauri::AppHandle) -> bool {
 #[tauri::command]
 fn download_tts_engine(app: tauri::AppHandle) {
     tts_setup::spawn_setup(app);
+}
+
+#[tauri::command]
+fn preview_voice(app: tauri::AppHandle, voice: String) -> Result<u64, String> {
+    if !settings::is_tts_voice(&voice) {
+        return Err("Unknown voice".to_string());
+    }
+    if !tts_setup::is_ready(&app) {
+        return Err("Install the local voice engine before previewing voices".to_string());
+    }
+    let mut paths = resolve_voice_paths(&app).ok_or("Voice engine paths are unavailable")?;
+    println!("[synapse] voice preview requested voice={voice}");
+    paths.voice = voice;
+    let sidecar = app.state::<tts_pocket::TtsSidecar>();
+    sidecar.stop();
+    let generation = sidecar.begin_utterance();
+    println!("[synapse] voice preview generation={generation}");
+    sidecar.enqueue(paths.job(generation, "Hi, I'm ready whenever you are.".to_string()));
+    sidecar.end_utterance(generation);
+    Ok(generation)
 }
 
 /// Asks the updater plugin whether the signed release manifest advertises a
@@ -1127,7 +1246,7 @@ fn speak_text(app: tauri::AppHandle, text: String) {
                 // Chunked even for one-shot text: a long selection would
                 // otherwise be several seconds of silence before anything
                 // plays, and the queue makes it start after the first sentence.
-                let chunks = sentences::split_all(&text);
+                let chunks = sentences::split_for_fast_start(&text);
                 if !chunks.is_empty() {
                     for chunk in chunks {
                         sidecar.enqueue(paths.job(generation, chunk));
@@ -1231,9 +1350,14 @@ pub fn run() {
             get_note,
             create_note,
             save_note_content,
+            save_note_document,
+            favorite_note,
+            trash_note,
+            organize_note,
             set_note_color,
             open_note_window,
             close_note_window,
+            open_notes_hub,
             delete_note,
             // File I/O for notes, from the Notepad save/open work (#1). The
             // single Notepad it was written for is gone, but the capability
@@ -1241,11 +1365,14 @@ pub fn run() {
             save_note_to,
             load_note_from,
             list_clipboard,
+            clipboard_stats,
+            clipboard_asset,
             pin_clipboard_entry,
             delete_clipboard_entry,
             clear_clipboard_history,
             add_pinned_clip,
             insert_clip,
+            insert_clipboard_entry,
             set_api_key,
             provider_status,
             send_ai_message,
@@ -1253,6 +1380,7 @@ pub fn run() {
             transcribe_for_ai,
             check_mic_access,
             speak_text,
+            preview_voice,
             stop_speaking,
             is_speaking,
             clear_conversation,
@@ -1280,11 +1408,20 @@ pub fn run() {
             // became note #1.
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&dir);
+                if let Err(e) = storage::open(&dir.join("synapse.db")) {
+                    eprintln!("[synapse] database initialization failed: {e}");
+                }
                 if let Err(e) = clipboard_history::migrate_snippets(&dir) {
                     eprintln!("[synapse] snippet migration failed: {e}");
                 }
                 if let Err(e) = notes::migrate_legacy(&dir) {
                     eprintln!("[synapse] notepad migration failed: {e}");
+                }
+                if let Err(e) = notes::migrate_json_store(&dir) {
+                    eprintln!("[synapse] notes database migration failed: {e}");
+                }
+                if let Err(e) = clipboard_history::migrate_json_store(&dir) {
+                    eprintln!("[synapse] clipboard database migration failed: {e}");
                 }
             }
             clipboard_history::spawn_watcher(app.handle().clone());
@@ -1293,6 +1430,21 @@ pub fn run() {
             // starts the synthesis worker. Must happen here, not at .manage()
             // time, because no AppHandle exists that early.
             app.state::<tts_pocket::TtsSidecar>().attach(app.handle().clone());
+            if tts_setup::is_ready(app.handle()) {
+                let warm_app = app.handle().clone();
+                std::thread::spawn(move || {
+                    let (Ok(python), Ok(script)) = (
+                        tts_setup::python_path(&warm_app),
+                        tts_setup::sidecar_script_path(&warm_app),
+                    ) else {
+                        return;
+                    };
+                    let sidecar = warm_app.state::<tts_pocket::TtsSidecar>();
+                    if let Err(error) = sidecar.warm_up(&python, &script) {
+                        eprintln!("[synapse] voice warm-up failed: {error}");
+                    }
+                });
+            }
 
             // One flush thread for every note window, rather than one per note.
             let geometry_app = app.handle().clone();
@@ -1301,7 +1453,7 @@ pub fn run() {
                 flush_geometry(&geometry_app);
             });
 
-            let overlay = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("index.html".into()))
+            let _overlay = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse")
                 .inner_size(OVERLAY_SIZE, OVERLAY_SIZE)
                 .transparent(true)
@@ -1316,7 +1468,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 let _ = window_vibrancy::apply_vibrancy(
-                    &overlay,
+                    &_overlay,
                     window_vibrancy::NSVisualEffectMaterial::HudWindow,
                     None,
                     Some(16.0),
@@ -1324,7 +1476,7 @@ pub fn run() {
             }
 
             #[cfg(debug_assertions)]
-            overlay.open_devtools();
+            _overlay.open_devtools();
 
             // The clipboard picker and the notes hub are normal decorated
             // windows (unlike the overlay) — they're content surfaces the user
@@ -1335,7 +1487,10 @@ pub fn run() {
             // every window rendered the wheel.
             let notes_hub = WebviewWindowBuilder::new(app, NOTES_HUB_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse - Notes")
-                .inner_size(380.0, 560.0)
+                .inner_size(1100.0, 720.0)
+                .min_inner_size(720.0, 520.0)
+                .decorations(false)
+                .transparent(true)
                 .visible(false)
                 .build()?;
             #[cfg(debug_assertions)]
@@ -1369,6 +1524,9 @@ pub fn run() {
                 WebviewWindowBuilder::new(app, CLIPBOARD_LABEL, WebviewUrl::App("index.html".into()))
                     .title("Synapse - Clipboard")
                     .inner_size(460.0, 560.0)
+                    .min_inner_size(400.0, 420.0)
+                    .decorations(false)
+                    .transparent(true)
                     .visible(false)
                     .build()?;
             #[cfg(debug_assertions)]
@@ -1406,7 +1564,10 @@ pub fn run() {
 
             let settings_window = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse - Settings")
-                .inner_size(720.0, 520.0)
+                .inner_size(860.0, 640.0)
+                .min_inner_size(620.0, 460.0)
+                .decorations(false)
+                .transparent(true)
                 .visible(false)
                 .build()?;
             #[cfg(debug_assertions)]
@@ -1449,7 +1610,7 @@ pub fn run() {
 
             let onboarding = WebviewWindowBuilder::new(app, ONBOARDING_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Setup")
-                .inner_size(480.0, 600.0)
+                .inner_size(560.0, 680.0)
                 .resizable(false)
                 .center()
                 .visible(false)

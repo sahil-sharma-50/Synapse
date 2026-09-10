@@ -19,6 +19,13 @@ export interface VoiceSettings {
 
 export interface ClipboardSettings {
   history_enabled: boolean;
+  capture_text: boolean;
+  capture_images: boolean;
+  capture_links: boolean;
+  capture_files: boolean;
+  retention_days: number;
+  max_unpinned_items: number;
+  max_storage_mb: number;
 }
 
 export interface Settings {

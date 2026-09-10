@@ -42,6 +42,7 @@ keyring = "3"
 rodio = "0.19"
 flate2 = "1"
 tar = "0.4"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 
 # Scoped to desktop the way the plugin documents it. The signature check that
 # gates every update lives in here rather than in this repo on purpose: this is
@@ -65,6 +66,7 @@ windows = { version = "0.62", features = [
     "Win32_System_DataExchange",
 ] }
 keyring = { version = "3", features = ["windows-native"] }
+clipboard-win = "5.4.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }

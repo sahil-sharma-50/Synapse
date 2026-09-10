@@ -20,7 +20,16 @@ function settings(overrides: Partial<Settings["ai"]> = {}): Settings {
     },
     tts: { voice: "alba" },
     voice: { auto_stop_on_silence: false },
-    clipboard: { history_enabled: true },
+    clipboard: {
+      history_enabled: true,
+      capture_text: true,
+      capture_images: true,
+      capture_links: true,
+      capture_files: true,
+      retention_days: 30,
+      max_unpinned_items: 500,
+      max_storage_mb: 250,
+    },
     onboarding_complete: true,
   };
 }

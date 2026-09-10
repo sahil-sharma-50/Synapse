@@ -11,11 +11,31 @@ not need to do that mapping itself.
 """
 import json
 import sys
+import wave
+from pathlib import Path
 
 from pocket_tts import TTSModel
-from pocket_tts.data.audio import stream_audio_chunks
 
 _model = TTSModel.load_model()
+_voice_states = {}
+for _voice in ("alba", "giovanni", "lola", "juergen", "rafael", "estelle"):
+    try:
+        _voice_states[_voice] = _model.get_state_for_audio_prompt(_voice)
+    except Exception as exc:  # individual voices can retry when selected
+        print(f"Voice warm-up failed for {_voice}: {exc}", file=sys.stderr, flush=True)
+
+
+def _write_audio_chunk(base_path: str, index: int, audio_chunk) -> str:
+    base = Path(base_path)
+    chunk_path = base.with_name(f"{base.stem}-{index}{base.suffix}")
+    chunk_int16 = (audio_chunk.clamp(-1, 1) * 32767).short()
+    chunk_bytes = chunk_int16.detach().cpu().numpy().tobytes()
+    with wave.open(str(chunk_path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(_model.sample_rate)
+        output.writeframes(chunk_bytes)
+    return str(chunk_path)
 
 
 def handle(request: dict) -> dict:
@@ -23,17 +43,28 @@ def handle(request: dict) -> dict:
         text = request["text"]
         voice = request["voice"]
         out_path = request["out_path"]
-        voice_state = _model.get_state_for_audio_prompt(voice)
+        voice_state = _voice_states.get(voice)
+        if voice_state is None:
+            voice_state = _model.get_state_for_audio_prompt(voice)
+            _voice_states[voice] = voice_state
         audio_chunks = _model.generate_audio_stream(
             model_state=voice_state, text_to_generate=text
         )
-        stream_audio_chunks(out_path, audio_chunks, _model.sample_rate)
+        for index, audio_chunk in enumerate(audio_chunks):
+            chunk_path = _write_audio_chunk(out_path, index, audio_chunk)
+            print(
+                json.dumps(
+                    {"id": request["id"], "status": "chunk", "path": chunk_path}
+                ),
+                flush=True,
+            )
         return {"id": request["id"], "status": "ok"}
     except Exception as exc:  # noqa: BLE001 - any failure must produce a response line
         return {"id": request.get("id", 0), "status": "error", "message": str(exc)}
 
 
 def main() -> None:
+    print(json.dumps({"id": 0, "status": "ready"}), flush=True)
     for line in sys.stdin:
         line = line.strip()
         if not line:
