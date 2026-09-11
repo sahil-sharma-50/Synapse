@@ -164,6 +164,35 @@ body,
   color: var(--sy-danger);
 }
 
+.status-speaking-icon {
+  width: var(--sy-8);
+  height: var(--sy-8);
+  fill: var(--sy-accent);
+}
+
+.status-stop-button {
+  min-height: var(--sy-8);
+  padding: 0 var(--sy-5);
+  border: 0;
+  border-radius: var(--sy-r-pill);
+  background: var(--sy-accent-solid);
+  color: var(--sy-ink-on-accent);
+  font-size: var(--sy-fs-xs);
+  font-weight: var(--sy-fw-semi);
+  cursor: pointer;
+  transition:
+    filter var(--sy-dur-fast) var(--sy-ease-out),
+    transform var(--sy-dur-fast) var(--sy-ease-out);
+}
+
+.status-stop-button:hover {
+  filter: brightness(1.1);
+}
+
+.status-stop-button:active {
+  transform: scale(0.97);
+}
+
 .status-check {
   width: 30px;
   height: 30px;

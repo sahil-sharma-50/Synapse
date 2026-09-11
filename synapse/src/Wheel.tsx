@@ -27,7 +27,7 @@ const LEVEL_BARS = 5;
 /// anything above this is shouting and just pins the meter.
 const LEVEL_CEILING = 0.22;
 
-type Mode = "menu" | "listening" | "error" | "toast";
+type Mode = "menu" | "listening" | "speaking" | "error" | "speech-error" | "toast";
 
 interface Toast {
   title: string;
@@ -45,17 +45,21 @@ interface DictationTick {
 /// Shared circular panel for the overlay's non-menu states, so the icon and
 /// text stack inside one circle instead of overlapping as separately-centred
 /// absolute elements.
-function StatusCircle({
+export function StatusCircle({
   title,
   detail,
   tone,
   onClick,
+  actionLabel,
+  onAction,
   children,
 }: {
   title: string;
   detail?: React.ReactNode;
   tone?: "error";
   onClick?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   children?: React.ReactNode;
 }) {
   return (
@@ -67,6 +71,11 @@ function StatusCircle({
         {children}
         <span className="status-title">{title}</span>
         {detail && <span className="status-detail">{detail}</span>}
+        {actionLabel && onAction && (
+          <button className="status-stop-button" onClick={onAction} autoFocus>
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -83,7 +92,11 @@ function LevelMeter({ level, active }: { level: number; active: boolean }) {
         <span
           key={i}
           className="level-bar"
-          style={active ? { "--level-scale": (5 + norm * weights[i] * 28) / 34 } as React.CSSProperties : undefined}
+          style={
+            active
+              ? ({ "--level-scale": (5 + norm * weights[i] * 28) / 34 } as React.CSSProperties)
+              : undefined
+          }
         />
       ))}
     </div>
@@ -108,6 +121,7 @@ export default function Wheel() {
   // be set by the time the click handler might run.
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
+  const selectedSpeechPending = useRef(false);
 
   function endPress() {
     pressOrigin.current = null;
@@ -126,6 +140,7 @@ export default function Wheel() {
       // While recording, Esc stops the capture; the backend then tears the
       // overlay down itself once it has finished.
       if (mode === "listening") invoke("stop_dictation");
+      else if (mode === "speaking") invoke("stop_speaking");
       else invoke("dismiss_overlay");
     };
     window.addEventListener("keydown", onKey);
@@ -136,6 +151,10 @@ export default function Wheel() {
     // The webview persists across window show/hide, so mode must be reset
     // explicitly by the Rust side rather than relying on component remount.
     const unlistenShown = listen("wheel-shown", () => {
+      if (selectedSpeechPending.current) {
+        setMode("speaking");
+        return;
+      }
       setError("");
       setTick(null);
       // A drag flag left set by an interrupted gesture would silently eat the
@@ -154,8 +173,27 @@ export default function Wheel() {
       setMode("error");
     });
     const unlistenToast = listen<Toast>("toast", (e) => {
+      selectedSpeechPending.current = false;
       setToast(e.payload);
       setMode("toast");
+    });
+    const unlistenSpeechStarted = listen("tts-started", () => {
+      if (!selectedSpeechPending.current) return;
+      setMode("speaking");
+      invoke("show_speech_controls");
+    });
+    const unlistenSpeechEnded = listen("tts-ended", () => {
+      if (!selectedSpeechPending.current) return;
+      selectedSpeechPending.current = false;
+      invoke("dismiss_overlay");
+    });
+    const unlistenSpeechError = listen<string>("tts-error", (e) => {
+      if (!selectedSpeechPending.current) return;
+      invoke("stop_speaking");
+      selectedSpeechPending.current = false;
+      setError(e.payload);
+      setMode("speech-error");
+      invoke("show_speech_controls");
     });
 
     return () => {
@@ -164,6 +202,9 @@ export default function Wheel() {
       unlistenTick.then((f) => f());
       unlistenError.then((f) => f());
       unlistenToast.then((f) => f());
+      unlistenSpeechStarted.then((f) => f());
+      unlistenSpeechEnded.then((f) => f());
+      unlistenSpeechError.then((f) => f());
     };
   }, []);
 
@@ -174,6 +215,7 @@ export default function Wheel() {
     } else if (id === "quit") {
       invoke("force_quit"); // no confirmation, no toast — the process ends immediately
     } else {
+      if (id === "speak-selected") selectedSpeechPending.current = true;
       invoke("select_wedge", { wedge: id });
     }
   }
@@ -200,6 +242,21 @@ export default function Wheel() {
         onClick={() => invoke("stop_dictation")}
       >
         <LevelMeter level={tick?.level ?? 0} active={heard} />
+      </StatusCircle>
+    );
+  }
+
+  if (mode === "speaking") {
+    return (
+      <StatusCircle
+        title="Speaking…"
+        detail="Press Esc or use the button to interrupt"
+        actionLabel="Stop speaking"
+        onAction={() => invoke("stop_speaking")}
+      >
+        <svg viewBox="0 0 24 24" className="status-speaking-icon" aria-hidden="true">
+          <path d="M4 10v4h4l5 4V6l-5 4H4Zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12Z" />
+        </svg>
       </StatusCircle>
     );
   }
@@ -234,14 +291,25 @@ export default function Wheel() {
     return <StatusCircle title="Dictation failed" detail={error} tone="error" />;
   }
 
+  if (mode === "speech-error") {
+    return <StatusCircle title="Speech failed" detail={error} tone="error" />;
+  }
+
   return (
-    <div className="overlay-root" onClick={(e) => { if (e.target === e.currentTarget) invoke("dismiss_overlay"); }}>
+    <div
+      className="overlay-root"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) invoke("dismiss_overlay");
+      }}
+    >
       <svg
         width={SIZE}
         height={SIZE}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => { if (e.target === e.currentTarget) invoke("dismiss_overlay"); }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) invoke("dismiss_overlay");
+        }}
       >
         {WEDGES.map((wedge, i) => {
           const d = wedgePath(i, WEDGES.length, CENTER, CENTER, R_OUTER, R_INNER);
@@ -308,7 +376,9 @@ export default function Wheel() {
       </svg>
 
       <div className="hub-label">
-        <span className="wheel-hub-title">{hoveredWedge ? hoveredWedge.label : "Pick an action"}</span>
+        <span className="wheel-hub-title">
+          {hoveredWedge ? hoveredWedge.label : "Pick an action"}
+        </span>
         <span className="wheel-hub-hint">drag to move · esc to close</span>
       </div>
     </div>

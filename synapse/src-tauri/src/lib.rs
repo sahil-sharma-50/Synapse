@@ -45,6 +45,49 @@ const FRESH_INSTALL_MARKER: &str = ".fresh-install";
 // visible rectangle around the circle.
 const OVERLAY_SIZE: f64 = 360.0;
 
+fn overlay_position(
+    cursor: (i32, i32),
+    work_area_origin: (i32, i32),
+    work_area_size: (u32, u32),
+    overlay_size: u32,
+) -> (i32, i32) {
+    let overlay_size = i32::try_from(overlay_size).unwrap_or(i32::MAX);
+    let half = overlay_size / 2;
+    clamp_window_position(
+        (cursor.0.saturating_sub(half), cursor.1.saturating_sub(half)),
+        work_area_origin,
+        work_area_size,
+        (overlay_size as u32, overlay_size as u32),
+    )
+}
+
+fn clamp_window_position(
+    position: (i32, i32),
+    work_area_origin: (i32, i32),
+    work_area_size: (u32, u32),
+    window_size: (u32, u32),
+) -> (i32, i32) {
+    let work_width = i32::try_from(work_area_size.0).unwrap_or(i32::MAX);
+    let work_height = i32::try_from(work_area_size.1).unwrap_or(i32::MAX);
+    let window_width = i32::try_from(window_size.0).unwrap_or(i32::MAX);
+    let window_height = i32::try_from(window_size.1).unwrap_or(i32::MAX);
+    let max_x = work_area_origin
+        .0
+        .saturating_add(work_width)
+        .saturating_sub(window_width)
+        .max(work_area_origin.0);
+    let max_y = work_area_origin
+        .1
+        .saturating_add(work_height)
+        .saturating_sub(window_height)
+        .max(work_area_origin.1);
+
+    (
+        position.0.clamp(work_area_origin.0, max_x),
+        position.1.clamp(work_area_origin.1, max_y),
+    )
+}
+
 #[cfg(target_os = "windows")]
 fn apply_utility_glass(window: &tauri::WebviewWindow) {
     if let Err(error) = window_vibrancy::apply_acrylic(window, Some((24, 29, 39, 188))) {
@@ -126,8 +169,24 @@ fn show_overlay_at_cursor(app: &tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     {
         let (x, y) = cursor_position();
-        let half = (OVERLAY_SIZE / 2.0) as i32;
-        let _ = window.set_position(tauri::PhysicalPosition::new(x - half, y - half));
+        let position = window
+            .monitor_from_point(x as f64, y as f64)
+            .ok()
+            .flatten()
+            .map(|monitor| {
+                let work_area = monitor.work_area();
+                overlay_position(
+                    (x, y),
+                    (work_area.position.x, work_area.position.y),
+                    (work_area.size.width, work_area.size.height),
+                    OVERLAY_SIZE as u32,
+                )
+            })
+            .unwrap_or_else(|| {
+                let half = (OVERLAY_SIZE / 2.0) as i32;
+                (x - half, y - half)
+            });
+        let _ = window.set_position(tauri::PhysicalPosition::new(position.0, position.1));
     }
 
     let _ = window.show();
@@ -145,6 +204,18 @@ fn hide_overlay(app: &tauri::AppHandle) {
 #[tauri::command]
 fn dismiss_overlay(app: tauri::AppHandle) {
     hide_overlay(&app);
+}
+
+#[tauri::command]
+fn show_speech_controls(app: tauri::AppHandle) {
+    if app
+        .get_webview_window(OVERLAY_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
+    {
+        return;
+    }
+    show_overlay_at_cursor(&app);
 }
 
 #[tauri::command]
@@ -1340,6 +1411,7 @@ pub fn run() {
         .manage(Conversation::default())
         .invoke_handler(tauri::generate_handler![
             dismiss_overlay,
+            show_speech_controls,
             select_wedge,
             force_quit,
             start_overlay_drag,
@@ -1464,6 +1536,33 @@ pub fn run() {
                 .visible(false)
                 .shadow(false)
                 .build()?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let overlay = _overlay.clone();
+                _overlay.on_window_event(move |event| {
+                    let tauri::WindowEvent::Moved(position) = event else {
+                        return;
+                    };
+                    let (cursor_x, cursor_y) = cursor_position();
+                    let (Ok(Some(monitor)), Ok(size)) = (
+                        overlay.monitor_from_point(cursor_x as f64, cursor_y as f64),
+                        overlay.outer_size(),
+                    ) else {
+                        return;
+                    };
+                    let work_area = monitor.work_area();
+                    let clamped = clamp_window_position(
+                        (position.x, position.y),
+                        (work_area.position.x, work_area.position.y),
+                        (work_area.size.width, work_area.size.height),
+                        (size.width, size.height),
+                    );
+                    if clamped != (position.x, position.y) {
+                        let _ = overlay.set_position(tauri::PhysicalPosition::new(clamped.0, clamped.1));
+                    }
+                });
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -1761,5 +1860,55 @@ mod tests {
     fn no_marker_reports_false() {
         let dir = temp_dir("no-marker");
         assert!(!take_fresh_install_marker(&dir));
+    }
+
+    #[test]
+    fn overlay_position_stays_inside_monitor_work_area_at_corners() {
+        let work_area_origin = (0, 0);
+        let work_area_size = (1920, 1040);
+
+        assert_eq!(
+            overlay_position((0, 0), work_area_origin, work_area_size, 360),
+            (0, 0),
+            "top-left cursor keeps the whole wheel visible"
+        );
+        assert_eq!(
+            overlay_position((1919, 1039), work_area_origin, work_area_size, 360),
+            (1560, 680),
+            "bottom-right cursor keeps the whole wheel above the taskbar"
+        );
+    }
+
+    #[test]
+    fn overlay_position_supports_monitors_with_negative_origins() {
+        assert_eq!(overlay_position((-1920, 0), (-1920, 0), (1920, 1080), 360), (-1920, 0));
+    }
+
+    #[test]
+    fn dragged_overlay_stops_at_every_work_area_edge() {
+        let work_area_origin = (0, 0);
+        let work_area_size = (1920, 1040);
+        let window_size = (360, 360);
+
+        assert_eq!(
+            clamp_window_position((-40, 120), work_area_origin, work_area_size, window_size),
+            (0, 120),
+            "left edge"
+        );
+        assert_eq!(
+            clamp_window_position((400, -50), work_area_origin, work_area_size, window_size),
+            (400, 0),
+            "top edge"
+        );
+        assert_eq!(
+            clamp_window_position((1700, 300), work_area_origin, work_area_size, window_size),
+            (1560, 300),
+            "right edge"
+        );
+        assert_eq!(
+            clamp_window_position((900, 800), work_area_origin, work_area_size, window_size),
+            (900, 680),
+            "bottom edge above the taskbar"
+        );
     }
 }
