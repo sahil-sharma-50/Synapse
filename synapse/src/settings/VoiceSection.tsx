@@ -40,6 +40,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
 
   async function selectVoice(voice: string) {
     const request = ++previewRequest.current;
+    previewGeneration.current = null;
     setPreviewError("");
     setPreviewingVoice(voice);
     try {
@@ -84,7 +85,10 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               {model.ready ? "Installed" : "Not installed"}
             </span>
             {!model.downloading && (
-              <button className={`set-btn ${model.ready ? "set-btn-quiet" : ""}`} onClick={model.start}>
+              <button
+                className={`set-btn ${model.ready ? "set-btn-quiet" : ""}`}
+                onClick={model.start}
+              >
                 {model.ready ? "Re-download" : `Download (${ASR_MODEL.sizeLabel})`}
               </button>
             )}
@@ -96,7 +100,11 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             <div className={`set-meter ${model.known ? "" : "set-meter-idle"}`}>
               <div
                 className="set-meter-fill"
-                style={model.known ? { "--meter-progress": model.percent / 100 } as React.CSSProperties : undefined}
+                style={
+                  model.known
+                    ? ({ "--meter-progress": model.percent / 100 } as React.CSSProperties)
+                    : undefined
+                }
               />
             </div>
             <div className="set-progress-foot">
@@ -109,7 +117,11 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             </div>
           </div>
         )}
-        {model.error && <div className="set-card-row set-error" role="alert">{model.error}</div>}
+        {model.error && (
+          <div className="set-card-row set-error" role="alert">
+            {model.error}
+          </div>
+        )}
 
         <label className="set-card-row">
           <span className="set-row-icon">
@@ -136,9 +148,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
           </div>
         </label>
       </div>
-      <p className="set-hint">
-        Required for dictation and for talking to the AI by voice.
-      </p>
+      <p className="set-hint">Required for dictation and for talking to the AI by voice.</p>
 
       <div className="set-card-title">Text-to-Speech</div>
       <div className="set-card">
@@ -172,7 +182,11 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             <div className={`set-meter ${tts.known ? "" : "set-meter-idle"}`}>
               <div
                 className="set-meter-fill"
-                style={tts.known ? { "--meter-progress": tts.percent / 100 } as React.CSSProperties : undefined}
+                style={
+                  tts.known
+                    ? ({ "--meter-progress": tts.percent / 100 } as React.CSSProperties)
+                    : undefined
+                }
               />
             </div>
             <div className="set-progress-foot">
@@ -183,7 +197,11 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             </div>
           </div>
         )}
-        {tts.error && <div className="set-card-row set-error" role="alert">{tts.error}</div>}
+        {tts.error && (
+          <div className="set-card-row set-error" role="alert">
+            {tts.error}
+          </div>
+        )}
 
         <div className="set-card-row set-voice-row">
           <span className="set-row-icon">
@@ -200,7 +218,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               <button
                 key={voice}
                 type="button"
-                className="set-voice-option"
+                className={`set-voice-option${previewingVoice === voice ? " set-voice-option-playing" : ""}`}
                 role="radio"
                 aria-checked={voice === settings.tts.voice}
                 disabled={!tts.ready}
@@ -208,13 +226,21 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               >
                 <span>{voice}</span>
                 <span className="set-voice-state">
-                  {previewingVoice === voice ? "Playing…" : voice === settings.tts.voice ? "Selected" : "Preview"}
+                  {previewingVoice === voice
+                    ? "Playing…"
+                    : voice === settings.tts.voice
+                      ? "Selected"
+                      : "Preview"}
                 </span>
               </button>
             ))}
           </div>
         </div>
-        {previewError && <div className="set-card-row set-error" role="alert">{previewError}</div>}
+        {previewError && (
+          <div className="set-card-row set-error" role="alert">
+            {previewError}
+          </div>
+        )}
       </div>
       <p className="set-hint">
         Used by "Speak Selected Text" and by the AI when it answers out loud. Without it, Synapse
