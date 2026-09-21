@@ -1574,9 +1574,6 @@ pub fn run() {
                 );
             }
 
-            #[cfg(debug_assertions)]
-            _overlay.open_devtools();
-
             // The clipboard picker and the notes hub are normal decorated
             // windows (unlike the overlay) — they're content surfaces the user
             // may want to move/resize, not a transient chromeless wheel.
@@ -1592,9 +1589,6 @@ pub fn run() {
                 .transparent(true)
                 .visible(false)
                 .build()?;
-            #[cfg(debug_assertions)]
-            notes_hub.open_devtools();
-
             // Closing a Tauri window destroys it, after which show() silently
             // does nothing — so these utility windows intercept the close and
             // hide instead, keeping them reusable across invocations.
@@ -1628,9 +1622,6 @@ pub fn run() {
                     .transparent(true)
                     .visible(false)
                     .build()?;
-            #[cfg(debug_assertions)]
-            clipboard_window.open_devtools();
-
             let sp = clipboard_window.clone();
             clipboard_window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1650,9 +1641,6 @@ pub fn run() {
                 .transparent(true)
                 .visible(false)
                 .build()?;
-            #[cfg(debug_assertions)]
-            ai_panel.open_devtools();
-
             let aip = ai_panel.clone();
             ai_panel.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1669,9 +1657,6 @@ pub fn run() {
                 .transparent(true)
                 .visible(false)
                 .build()?;
-            #[cfg(debug_assertions)]
-            settings_window.open_devtools();
-
             let sw = settings_window.clone();
             settings_window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1714,9 +1699,6 @@ pub fn run() {
                 .center()
                 .visible(false)
                 .build()?;
-            #[cfg(debug_assertions)]
-            onboarding.open_devtools();
-
             // Shown here rather than via `.visible(show_onboarding)` so it goes
             // through the Z-order dance — see `show_foreground`.
             if show_onboarding {

@@ -125,6 +125,15 @@ const CASES = [
         s.replace('"createUpdaterArtifacts": true', '"createUpdaterArtifacts": false'),
       ),
   },
+  {
+    guard: "./no-auto-devtools.mjs",
+    what: "a window opening DevTools during startup",
+    break: (edit) =>
+      edit(
+        "synapse/src-tauri/src/lib.rs",
+        (s) => `${s}\nfn __guard_probe(window: tauri::WebviewWindow) { window.open_devtools(); }\n`,
+      ),
+  },
 ];
 
 let failures = 0;
