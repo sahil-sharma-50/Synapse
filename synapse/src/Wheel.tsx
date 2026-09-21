@@ -314,12 +314,23 @@ export default function Wheel() {
             <g
               key={wedge.id}
               className={`wedge${wedge.danger ? " wedge-danger" : ""}${isHovered ? " wedge-hovered" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={wedge.label}
               onMouseEnter={() => setHovered(wedge.id)}
               onMouseLeave={() => setHovered((h) => (h === wedge.id ? null : h))}
               onClick={() => selectWedge(wedge.id)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                selectWedge(wedge.id);
+              }}
             >
               <path d={d} className="wedge-slice" />
-              <g transform={`translate(${x - 10} ${y - 10}) scale(${20 / 24})`} className="wedge-icon">
+              <g
+                transform={`translate(${x - 10} ${y - 10}) scale(${20 / 24})`}
+                className="wedge-icon"
+              >
                 <path d={wedge.icon} />
               </g>
             </g>

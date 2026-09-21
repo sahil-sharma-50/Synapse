@@ -12,6 +12,11 @@ interface VoiceSectionProps {
   onChange: (settings: Settings) => void;
 }
 
+interface TtsGenerationError {
+  generation: number;
+  message: string;
+}
+
 export default function VoiceSection({ settings, onChange }: VoiceSectionProps) {
   const model = useModelDownload();
   const tts = useTtsSetup();
@@ -19,6 +24,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
   const [previewError, setPreviewError] = useState("");
   const previewGeneration = useRef<number | null>(null);
   const previewRequest = useRef(0);
+  const pendingPreviewErrors = useRef(new Map<number, string>());
 
   useEffect(() => {
     const listeners = [
@@ -28,9 +34,14 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
           setPreviewingVoice(null);
         }
       }),
-      listen<string>("tts-error", (event) => {
+      listen<TtsGenerationError>("tts-generation-error", (event) => {
+        if (!isCurrentPreview(previewGeneration.current, event.payload.generation)) {
+          pendingPreviewErrors.current.set(event.payload.generation, event.payload.message);
+          return;
+        }
+        previewGeneration.current = null;
         setPreviewingVoice(null);
-        setPreviewError(event.payload);
+        setPreviewError(event.payload.message);
       }),
     ];
     return () => {
@@ -50,10 +61,19 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
         save: onChange,
         preview: (selected) => invoke<number>("preview_voice", { voice: selected }),
       });
-      if (request === previewRequest.current) previewGeneration.current = generation;
+      if (request !== previewRequest.current) return;
+      const generationError = pendingPreviewErrors.current.get(generation);
+      pendingPreviewErrors.current.clear();
+      if (generationError) {
+        setPreviewingVoice(null);
+        setPreviewError(generationError);
+      } else {
+        previewGeneration.current = generation;
+      }
     } catch (error) {
       if (request !== previewRequest.current) return;
       previewGeneration.current = null;
+      pendingPreviewErrors.current.clear();
       setPreviewingVoice(null);
       setPreviewError(String(error));
     }

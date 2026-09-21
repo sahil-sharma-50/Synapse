@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize)]
+struct TtsGenerationError {
+    generation: u64,
+    message: String,
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct SidecarRequest {
     pub id: u64,
@@ -337,6 +343,13 @@ impl TtsSidecar {
                             Err(e) => {
                                 eprintln!("[synapse] tts synthesis failed: {e}");
                                 use tauri::Emitter;
+                                let _ = app.emit(
+                                    "tts-generation-error",
+                                    TtsGenerationError {
+                                        generation: job.generation,
+                                        message: e.clone(),
+                                    },
+                                );
                                 let _ = app.emit("tts-error", e);
                                 // Still end the utterance, or the UI would sit
                                 // in "speaking" forever.

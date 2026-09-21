@@ -427,6 +427,10 @@ select.set-input {
   cursor: not-allowed;
 }
 
+label.set-card-row > .set-switch {
+  margin-left: auto;
+}
+
 /* ---- Progress ---- */
 
 .set-progress {
@@ -442,10 +446,13 @@ select.set-input {
   overflow: hidden;
 }
 .set-meter-fill {
+  width: 100%;
   height: 100%;
   border-radius: var(--sy-r-pill);
   background: var(--sy-accent-solid);
-  transition: width var(--sy-dur-slow) var(--sy-ease-out);
+  transform: scaleX(var(--meter-progress, 0));
+  transform-origin: left center;
+  transition: transform var(--sy-dur-slow) var(--sy-ease-out);
 }
 .set-meter-idle .set-meter-fill {
   width: 38%;

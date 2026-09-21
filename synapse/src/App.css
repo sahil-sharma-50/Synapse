@@ -68,6 +68,11 @@ body,
   fill: rgba(90, 170, 255, 0.65);
 }
 
+.wedge:focus-visible .wedge-slice {
+  stroke: var(--sy-accent);
+  stroke-width: 2;
+}
+
 .wedge-icon path {
   fill: rgba(235, 235, 240, 0.8);
   transition: fill var(--sy-dur-fast) var(--sy-ease-out);
@@ -103,7 +108,7 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--sy-1);
   padding: var(--sy-3);
   pointer-events: none;
   color: var(--sy-text);
