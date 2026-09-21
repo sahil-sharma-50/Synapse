@@ -228,7 +228,7 @@ export default function Wheel() {
             <span className="status-timer">{formatElapsed(tick?.elapsed_ms ?? 0)}</span>
             <br />
             {quietTooLong ? (
-              <span className="status-warn">Not hearing anything — check your microphone</span>
+              <span className="status-warn">Not hearing anything. Check your microphone.</span>
             ) : (
               "enter or click to stop"
             )}

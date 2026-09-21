@@ -41,13 +41,11 @@
   --sy-ink-on-accent: #0a0a0c;
 
   /* ---- Accent ----
-     Two values with different jobs: `accent` is light enough to read as text
-     on a dark surface (>= 4.5:1), `accent-solid` is saturated enough to carry
-     dark text on top of it. Using either in the other's role fails contrast. */
-  --sy-accent: #9fcaff;
-  --sy-accent-solid: #5aaaff;
-  --sy-accent-bg: rgba(90, 170, 255, 0.16);
-  --sy-accent-line: rgba(90, 170, 255, 0.45);
+     Synapse uses neutral Windows controls instead of a branded color wash. */
+  --sy-accent: #ffffff;
+  --sy-accent-solid: #e5e5e5;
+  --sy-accent-bg: #303030;
+  --sy-accent-line: #505050;
 
   /* ---- Semantic ---- */
   --sy-ok: #7fe8a0;
@@ -61,16 +59,17 @@
      Segoe UI Variable is the Windows 11 system face and is what the OS shell
      around us uses; Text and Display are its optical sizes. The fallbacks keep
      macOS and older Windows sane. */
-  --sy-font: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+  --sy-font:
+    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --sy-font-display:
+    "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system,
     BlinkMacSystemFont, system-ui, sans-serif;
-  --sy-font-display: "Segoe UI Variable Display", "Segoe UI Variable Text",
-    "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --sy-font-mono: "Cascadia Mono", ui-monospace, Consolas, monospace;
 
   --sy-fs-micro: 10px;
   --sy-fs-xs: 11px;
   --sy-fs-sm: 12px;
-  --sy-fs-base: 13px;
+  --sy-fs-base: 14px;
   --sy-fs-md: 15px;
   --sy-fs-lg: 20px;
   --sy-fs-xl: 26px;
@@ -130,6 +129,21 @@
   --sy-focus-ring: 0 0 0 2px var(--sy-accent-solid);
 
   --sy-content-max: 720px;
+
+  /* Neutral Fluent palette shared by every product surface. */
+  --sy-settings-bg: #202020;
+  --sy-settings-sidebar: #181818;
+  --sy-settings-card: #2b2b2b;
+  --sy-settings-raised: #333333;
+  --sy-settings-hover: #383838;
+  --sy-settings-selected: #303030;
+  --sy-settings-border: #3d3d3d;
+  --sy-settings-border-strong: #505050;
+  --sy-settings-text: #ffffff;
+  --sy-settings-dim: #c7c7c7;
+  --sy-settings-muted: #9d9d9d;
+  --sy-settings-control: #e5e5e5;
+  --sy-fs-ui: 14px;
 }
 
 /* ---- Base ---- */
@@ -197,15 +211,49 @@ body {
   box-shadow: var(--sy-focus-ring);
 }
 
-button, input, textarea, select { font-family: inherit; }
-button:disabled { cursor: not-allowed; }
-.utility-error { margin: var(--sy-6); padding: var(--sy-5); border-radius: var(--sy-r-md); background: var(--sy-danger-bg); color: var(--sy-danger); overflow-wrap: anywhere; }
-.utility-error p { margin: 0 0 var(--sy-4); }
-.utility-error button { padding: var(--sy-4) var(--sy-5); border: 1px solid var(--sy-border-strong); border-radius: var(--sy-r-sm); background: var(--sy-panel); color: var(--sy-text); cursor: pointer; }
-input, textarea, select { color-scheme: dark; }
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+.utility-error {
+  margin: var(--sy-6);
+  padding: var(--sy-5);
+  border-radius: var(--sy-r-md);
+  background: var(--sy-danger-bg);
+  color: var(--sy-danger);
+  overflow-wrap: anywhere;
+}
+.utility-error p {
+  margin: 0 0 var(--sy-4);
+}
+.utility-error button {
+  padding: var(--sy-4) var(--sy-5);
+  border: 1px solid var(--sy-border-strong);
+  border-radius: var(--sy-r-sm);
+  background: var(--sy-panel);
+  color: var(--sy-text);
+  cursor: pointer;
+}
+input,
+textarea,
+select {
+  color-scheme: dark;
+}
 @media (forced-colors: active) {
-  :focus-visible { outline: 2px solid Highlight; }
-  button, input, select, textarea { border: 1px solid ButtonText; }
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    border: 1px solid ButtonText;
+  }
 }
 
 /* Respect the OS reduced-motion setting everywhere at once. Individual
@@ -220,32 +268,31 @@ input, textarea, select { color-scheme: dark; }
   }
 }
 
-/* Liquid Glass utility surfaces use a deep neutral canvas. Glass is reserved
-   for navigation and controls; documents stay calm and opaque. */
+/* Fluent utility surfaces use the same neutral Windows palette everywhere. */
 :root {
   color-scheme: dark;
-  --sy-bg: rgba(8, 12, 20, 0.94);
-  --sy-sunken: rgba(10, 15, 25, 0.86);
-  --sy-panel: rgba(20, 27, 42, 0.9);
-  --sy-raised: rgba(29, 39, 59, 0.96);
-  --sy-float: rgba(15, 21, 34, 0.94);
-  --sy-scrim: rgba(2, 5, 12, 0.72);
-  --sy-glass: rgba(13, 19, 31, 0.68);
-  --sy-glass-strong: rgba(12, 18, 30, 0.84);
-  --sy-document: rgba(14, 20, 32, 0.98);
-  --sy-border: rgba(174, 203, 255, 0.12);
-  --sy-border-strong: rgba(190, 215, 255, 0.22);
-  --sy-hover: rgba(157, 199, 255, 0.09);
-  --sy-selected: rgba(56, 139, 253, 0.22);
-  --sy-text: #f7f9fd;
-  --sy-text-dim: rgba(229, 237, 250, 0.76);
-  --sy-text-faint: rgba(207, 221, 244, 0.54);
-  --sy-ink-on-accent: #ffffff;
-  --sy-white: #ffffff;
-  --sy-accent: #9dceff;
-  --sy-accent-solid: #3b82f6;
-  --sy-accent-bg: rgba(59, 130, 246, 0.2);
-  --sy-accent-line: rgba(112, 177, 255, 0.52);
+  --sy-bg: var(--sy-settings-bg);
+  --sy-sunken: var(--sy-settings-sidebar);
+  --sy-panel: var(--sy-settings-card);
+  --sy-raised: var(--sy-settings-raised);
+  --sy-float: var(--sy-settings-card);
+  --sy-scrim: rgba(20, 20, 20, 0.96);
+  --sy-glass: rgba(32, 32, 32, 0.82);
+  --sy-glass-strong: rgba(24, 24, 24, 0.94);
+  --sy-document: var(--sy-settings-bg);
+  --sy-border: var(--sy-settings-border);
+  --sy-border-strong: var(--sy-settings-border-strong);
+  --sy-hover: var(--sy-settings-hover);
+  --sy-selected: var(--sy-settings-selected);
+  --sy-text: var(--sy-settings-text);
+  --sy-text-dim: var(--sy-settings-dim);
+  --sy-text-faint: var(--sy-settings-muted);
+  --sy-ink-on-accent: var(--sy-settings-bg);
+  --sy-white: var(--sy-settings-text);
+  --sy-accent: var(--sy-settings-text);
+  --sy-accent-solid: var(--sy-settings-control);
+  --sy-accent-bg: var(--sy-settings-selected);
+  --sy-accent-line: var(--sy-settings-border-strong);
   --sy-ok: #86e6aa;
   --sy-ok-bg: rgba(55, 190, 110, 0.16);
   --sy-warn: #ffd08a;
@@ -253,10 +300,10 @@ input, textarea, select { color-scheme: dark; }
   --sy-danger: #ff9d9d;
   --sy-danger-bg: rgba(239, 78, 78, 0.17);
   --sy-close: #c42b1c;
-  --sy-shadow-1: 0 2px 10px rgba(0, 3, 10, 0.34);
-  --sy-shadow-2: 0 16px 42px rgba(0, 3, 12, 0.44);
-  --sy-shadow-3: 0 28px 72px rgba(0, 2, 10, 0.58);
-  --sy-glass-blur: blur(34px) saturate(165%);
+  --sy-shadow-1: 0 2px 10px rgba(0, 0, 0, 0.34);
+  --sy-shadow-2: 0 16px 42px rgba(0, 0, 0, 0.44);
+  --sy-shadow-3: 0 28px 72px rgba(0, 0, 0, 0.58);
+  --sy-glass-blur: blur(24px);
   --sy-titlebar-h: 44px;
   --sy-titlebar-compact-h: 36px;
   --sy-caption-button-w: 46px;
@@ -275,12 +322,22 @@ input, textarea, select { color-scheme: dark; }
     --sy-sunken: Canvas;
     --sy-panel: Canvas;
     --sy-raised: Canvas;
+    --sy-float: Canvas;
+    --sy-scrim: Canvas;
     --sy-glass: Canvas;
     --sy-glass-strong: Canvas;
     --sy-document: Canvas;
+    --sy-hover: Canvas;
+    --sy-selected: Highlight;
     --sy-text: CanvasText;
     --sy-text-dim: CanvasText;
     --sy-text-faint: GrayText;
+    --sy-ink-on-accent: HighlightText;
+    --sy-white: CanvasText;
+    --sy-accent: LinkText;
+    --sy-accent-solid: Highlight;
+    --sy-accent-bg: Canvas;
+    --sy-accent-line: Highlight;
     --sy-border: CanvasText;
     --sy-border-strong: CanvasText;
   }

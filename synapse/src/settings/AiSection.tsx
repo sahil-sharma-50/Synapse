@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  MODEL_CATALOG,
-  PROVIDER_LABELS,
-  modelFor,
-  type Provider,
-  type Settings,
-} from "../models";
+import { MODEL_CATALOG, PROVIDER_LABELS, modelFor, type Provider, type Settings } from "../models";
 import { ChipIcon, KeyIcon, LayersIcon } from "./icons";
 
 const CUSTOM = "__custom__";
@@ -61,7 +55,9 @@ export default function AiSection({
   }, []);
 
   function refreshStatus() {
-    invoke<Record<Provider, boolean>>("provider_status").then(setStatus).catch((e) => setError(String(e)));
+    invoke<Record<Provider, boolean>>("provider_status")
+      .then(setStatus)
+      .catch((e) => setError(String(e)));
   }
 
   useEffect(refreshStatus, []);
@@ -139,8 +135,8 @@ export default function AiSection({
       <div className="set-page-head">
         <h2 className="set-title">AI</h2>
         <p className="set-subtitle">
-          Synapse talks to your own account. Pick a provider and paste its key — there is no
-          Synapse server in between.
+          Synapse talks to your own account. Pick a provider and paste its key. There is no Synapse
+          server in between.
         </p>
       </div>
 
@@ -211,9 +207,7 @@ export default function AiSection({
           </span>
           <span className="set-label">API key</span>
           <div className="set-key">
-            <span
-              className={`set-badge ${status[provider] ? "set-ok" : "set-missing"}`}
-            >
+            <span className={`set-badge ${status[provider] ? "set-ok" : "set-missing"}`}>
               {status[provider] ? "Key set" : "No key"}
             </span>
             <input
@@ -239,10 +233,13 @@ export default function AiSection({
         </div>
       </div>
 
-      {error && <div className="set-error" role="alert">{error}</div>}
+      {error && (
+        <div className="set-error" role="alert">
+          {error}
+        </div>
+      )}
       <p className="set-hint">
-        Keys are stored in the Windows Credential Manager, never in Synapse's
-        settings file.
+        Keys are stored in the Windows Credential Manager, never in Synapse's settings file.
       </p>
     </div>
   );

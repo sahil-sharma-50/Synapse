@@ -1,10 +1,10 @@
 {
   "AiPanel.css": {
-    "hex": 14,
+    "hex": 2,
     "px": 0
   },
   "App.css": {
-    "hex": 1,
+    "hex": 0,
     "px": 1
   },
   "Clipboard.css": {
@@ -25,7 +25,7 @@
   },
   "Settings.css": {
     "hex": 0,
-    "px": 2
+    "px": 1
   },
   "StickyNote.css": {
     "hex": 0,

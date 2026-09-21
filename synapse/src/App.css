@@ -65,7 +65,7 @@ body,
 
 .wedge:hover .wedge-slice,
 .wedge-hovered .wedge-slice {
-  fill: rgba(90, 170, 255, 0.65);
+  fill: var(--sy-border-strong);
 }
 
 .wedge:focus-visible .wedge-slice {
@@ -81,7 +81,7 @@ body,
 
 .wedge:hover .wedge-icon path,
 .wedge-hovered .wedge-icon path {
-  fill: #ffffff;
+  fill: var(--sy-text);
 }
 
 .wedge-danger:hover .wedge-slice,

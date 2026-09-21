@@ -19,12 +19,7 @@
   color: var(--sy-text);
   font-family: var(--sy-font);
   font-size: var(--sy-fs-base);
-  /* A deep field rather than a flat panel, so the orb reads as lit *in* a
-     space. The two radial pools are the light it casts. */
-  background:
-    radial-gradient(90% 55% at 50% 22%, rgba(90, 170, 255, 0.14), transparent 62%),
-    radial-gradient(80% 50% at 90% 100%, rgba(150, 110, 255, 0.1), transparent 65%),
-    #121216;
+  background: var(--sy-bg);
 }
 
 /* ---- Title bar (the window is undecorated) ---- */
@@ -63,7 +58,8 @@
   font-family: inherit;
   font-size: var(--sy-fs-xs);
   cursor: pointer;
-  transition: background var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    background var(--sy-dur-fast) var(--sy-ease-out),
     color var(--sy-dur-fast) var(--sy-ease-out);
 }
 
@@ -77,7 +73,7 @@
 }
 
 .orb-bar-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sy-hover);
   color: var(--sy-text);
 }
 
@@ -120,16 +116,10 @@
   position: absolute;
   inset: 26px;
   border-radius: 50%;
-  /* Off-centre highlight: this is a sphere with a light source, not a circle. */
-  background: radial-gradient(
-    circle at 34% 30%,
-    #cfe6ff 0%,
-    var(--sy-accent-solid) 42%,
-    #2f6fd0 78%,
-    #1b3f7d 100%
-  );
-  box-shadow: 0 8px 26px rgba(40, 120, 230, 0.45);
-  transition: background var(--sy-dur-slow) var(--sy-ease-out),
+  background: var(--sy-accent-solid);
+  box-shadow: var(--sy-shadow-2);
+  transition:
+    background var(--sy-dur-slow) var(--sy-ease-out),
     box-shadow var(--sy-dur-slow) var(--sy-ease-out);
 }
 
@@ -184,17 +174,10 @@
   }
 }
 
-/* Thinking: the light drains toward violet and pulses faster — visibly a
-   different activity from listening, not just a faster version of it. */
+/* Thinking pulses faster so it stays distinct from listening. */
 .orb-thinking .orb-core {
-  background: radial-gradient(
-    circle at 34% 30%,
-    #e2d4ff 0%,
-    #9d7bff 44%,
-    #5c3fbf 80%,
-    #2d1f63 100%
-  );
-  box-shadow: 0 8px 26px rgba(130, 90, 240, 0.45);
+  background: var(--sy-text-dim);
+  box-shadow: var(--sy-shadow-2);
   animation: orb-think 1.15s var(--sy-ease-in-out) infinite;
 }
 
@@ -208,21 +191,15 @@
   }
 }
 
-/* Speaking: warm, pulsing at roughly the cadence of speech. */
+/* Speaking pulses at roughly the cadence of speech. */
 .orb-speaking .orb-core {
-  background: radial-gradient(
-    circle at 34% 30%,
-    #fff0d4 0%,
-    #ffc46b 44%,
-    #e08b2c 78%,
-    #7a4610 100%
-  );
-  box-shadow: 0 8px 30px rgba(240, 170, 70, 0.5);
+  background: var(--sy-text);
+  box-shadow: var(--sy-shadow-2);
   animation: orb-speak 0.7s var(--sy-ease-in-out) infinite;
 }
 
 .orb-speaking .orb-ring {
-  border-color: rgba(255, 190, 110, 0.5);
+  border-color: var(--sy-border-strong);
   animation: orb-listen 1.4s var(--sy-ease-out) infinite;
 }
 
@@ -328,12 +305,13 @@
   font-size: var(--sy-fs-xs);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    color var(--sy-dur-fast) var(--sy-ease-out),
     background var(--sy-dur-fast) var(--sy-ease-out);
 }
 
 .orb-link:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--sy-hover);
   color: var(--sy-text);
 }
 
@@ -350,7 +328,7 @@
   width: 100%;
   height: 62px;
   resize: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--sy-panel);
   border: 1px solid var(--sy-border-strong);
   border-radius: var(--sy-r-md);
   padding: var(--sy-4);
@@ -359,7 +337,8 @@
   font-size: var(--sy-fs-base);
   line-height: var(--sy-lh-body);
   outline: none;
-  transition: border-color var(--sy-dur-fast) var(--sy-ease-out),
+  transition:
+    border-color var(--sy-dur-fast) var(--sy-ease-out),
     box-shadow var(--sy-dur-fast) var(--sy-ease-out);
 }
 

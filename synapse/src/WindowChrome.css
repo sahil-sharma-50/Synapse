@@ -8,7 +8,7 @@
   min-height: var(--sy-titlebar-h);
   padding-left: var(--sy-6);
   color: var(--sy-text-dim);
-  background: linear-gradient(180deg, rgba(31, 43, 65, 0.88), rgba(13, 19, 31, 0.82));
+  background: var(--sy-sunken);
   border-bottom: 1px solid var(--sy-border);
   user-select: none;
 }

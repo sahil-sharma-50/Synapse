@@ -235,8 +235,8 @@ export default function Onboarding() {
             <h1 className="ob-title">Speak Selected Text (optional)</h1>
             <p className="ob-text">
               Select text anywhere and have Synapse read it aloud. This downloads a self-contained
-              speech engine, roughly 1-2 GB — optional, and you can grab it later from Settings →
-              Voice instead.
+              speech engine, roughly 1-2 GB. It is optional, and you can get it later from Settings
+              → Voice instead.
             </p>
 
             <div className={`ob-task ${tts.ready ? "ob-task-ok" : ""}`}>

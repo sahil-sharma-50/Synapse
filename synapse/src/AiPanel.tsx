@@ -25,7 +25,7 @@ const LEVEL_CEILING = 0.22;
 
 const HINTS: Record<OrbState, string> = {
   idle: "Click to talk",
-  listening: "Listening — click when you're done",
+  listening: "Listening. Click when you're done.",
   thinking: "Thinking…",
   speaking: "Click to interrupt",
 };
@@ -224,18 +224,19 @@ export default function AiPanel() {
       </div>
 
       <div className="orb-transcript" ref={transcriptRef}>
-        {error && <div className="orb-error" role="alert">{error}</div>}
+        {error && (
+          <div className="orb-error" role="alert">
+            {error}
+          </div>
+        )}
 
         {!hasKey && !error && (
           <div className="orb-empty">
             <p className="orb-empty-body">
-              Synapse talks to your own AI account. Add a key and this becomes a voice you can
-              think out loud at.
+              Synapse talks to your own AI account. Add a key and this becomes a voice you can think
+              out loud at.
             </p>
-            <button
-              className="orb-link"
-              onClick={() => invoke("open_settings", { section: "ai" })}
-            >
+            <button className="orb-link" onClick={() => invoke("open_settings", { section: "ai" })}>
               Open Settings
             </button>
           </div>
@@ -279,11 +280,7 @@ export default function AiPanel() {
             />
           </div>
         ) : (
-          <button
-            className="orb-link"
-            onClick={() => setShowComposer(true)}
-            disabled={!hasKey}
-          >
+          <button className="orb-link" onClick={() => setShowComposer(true)} disabled={!hasKey}>
             Type instead
           </button>
         )}

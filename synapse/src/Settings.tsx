@@ -38,7 +38,9 @@ export default function Settings() {
   }
 
   useEffect(() => {
-    invoke<SettingsData>("get_settings").then(setSettings).catch((cause) => setError(String(cause)));
+    invoke<SettingsData>("get_settings")
+      .then(setSettings)
+      .catch((cause) => setError(String(cause)));
   }, []);
 
   useEffect(() => {
@@ -105,12 +107,6 @@ export default function Settings() {
       />
       <div className="set-workspace">
         <nav className="set-sidebar" aria-label="Settings sections">
-          <div className="set-brand">
-            <img className="set-brand-mark" src={logo} alt="" />
-            <span>
-              Synapse<small>Settings</small>
-            </span>
-          </div>
           {SECTIONS.map((item) => (
             <button
               key={item.id}
@@ -127,7 +123,7 @@ export default function Settings() {
             </button>
           ))}
           <div className="set-sidebar-foot">
-            <span>Always within reach</span>
+            <span>Open wheel</span>
             <kbd>Ctrl + Alt + Enter</kbd>
             {version && <span>Synapse {version}</span>}
           </div>
