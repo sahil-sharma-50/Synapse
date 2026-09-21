@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { WEDGES, WedgeId, wedgePath, iconPosition } from "./wedges";
+import { WEDGES, WHEEL_GEOMETRY, WedgeId, wedgePath, iconPosition } from "./wedges";
 import "./App.css";
 
-// Keep SIZE in sync with OVERLAY_SIZE in src-tauri/src/lib.rs.
-// R_OUTER is deliberately well inside SIZE/2 so the drop-shadow has room to
-// fade out inside the window instead of clipping into a visible box.
-const SIZE = 360;
+const { size: SIZE, outerRadius: R_OUTER, innerRadius: R_INNER } = WHEEL_GEOMETRY;
 const CENTER = SIZE / 2;
-const R_OUTER = 150;
-const R_INNER = 58;
 const R_ICON = (R_OUTER + R_INNER) / 2;
 
 /// Pointer travel, in px, before a press on the hub becomes a drag instead of
@@ -324,7 +319,7 @@ export default function Wheel() {
               onClick={() => selectWedge(wedge.id)}
             >
               <path d={d} className="wedge-slice" />
-              <g transform={`translate(${x - 12} ${y - 12})`} className="wedge-icon">
+              <g transform={`translate(${x - 10} ${y - 10}) scale(${20 / 24})`} className="wedge-icon">
                 <path d={wedge.icon} />
               </g>
             </g>

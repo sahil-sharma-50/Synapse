@@ -39,11 +39,11 @@ const ONBOARDING_LABEL: &str = "onboarding";
 /// Written by the NSIS post-install hook (see `installer/hooks.nsh`), consumed
 /// on the next launch. Lives in the app data dir alongside settings.json.
 const FRESH_INSTALL_MARKER: &str = ".fresh-install";
-// Window is intentionally larger than the wheel itself (wheel diameter 300 in
-// App.tsx): the extra margin gives the CSS drop-shadow room to fade out inside
+// Window is intentionally larger than the wheel itself (wheel diameter 252 in
+// Wheel.tsx): the extra margin gives the CSS drop-shadow room to fade out inside
 // the window. Without it the shadow clips at the window edge and reads as a
 // visible rectangle around the circle.
-const OVERLAY_SIZE: f64 = 360.0;
+const OVERLAY_SIZE: f64 = 304.0;
 
 fn overlay_position(
     cursor: (i32, i32),
@@ -1846,17 +1846,18 @@ mod tests {
 
     #[test]
     fn overlay_position_stays_inside_monitor_work_area_at_corners() {
+        assert_eq!(OVERLAY_SIZE, 304.0);
         let work_area_origin = (0, 0);
         let work_area_size = (1920, 1040);
 
         assert_eq!(
-            overlay_position((0, 0), work_area_origin, work_area_size, 360),
+            overlay_position((0, 0), work_area_origin, work_area_size, OVERLAY_SIZE as u32),
             (0, 0),
             "top-left cursor keeps the whole wheel visible"
         );
         assert_eq!(
-            overlay_position((1919, 1039), work_area_origin, work_area_size, 360),
-            (1560, 680),
+            overlay_position((1919, 1039), work_area_origin, work_area_size, OVERLAY_SIZE as u32),
+            (1616, 736),
             "bottom-right cursor keeps the whole wheel above the taskbar"
         );
     }
@@ -1870,7 +1871,7 @@ mod tests {
     fn dragged_overlay_stops_at_every_work_area_edge() {
         let work_area_origin = (0, 0);
         let work_area_size = (1920, 1040);
-        let window_size = (360, 360);
+        let window_size = (304, 304);
 
         assert_eq!(
             clamp_window_position((-40, 120), work_area_origin, work_area_size, window_size),
@@ -1884,12 +1885,12 @@ mod tests {
         );
         assert_eq!(
             clamp_window_position((1700, 300), work_area_origin, work_area_size, window_size),
-            (1560, 300),
+            (1616, 300),
             "right edge"
         );
         assert_eq!(
             clamp_window_position((900, 800), work_area_origin, work_area_size, window_size),
-            (900, 680),
+            (900, 736),
             "bottom edge above the taskbar"
         );
     }

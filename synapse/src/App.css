@@ -31,7 +31,7 @@ body,
 @keyframes overlay-in {
   from {
     opacity: 0;
-    transform: scale(0.94);
+    transform: scale(0.96);
   }
   to {
     opacity: 1;
@@ -103,22 +103,22 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sy-3);
-  padding: var(--sy-4);
+  gap: 2px;
+  padding: var(--sy-3);
   pointer-events: none;
   color: var(--sy-text);
   text-align: center;
-  max-width: 104px;
+  max-width: 88px;
 }
 
 .wheel-hub-title {
-  font-size: var(--sy-fs-md);
+  font-size: var(--sy-fs-xs);
   font-weight: var(--sy-fw-semi);
   line-height: var(--sy-lh-tight);
 }
 
 .wheel-hub-hint {
-  font-size: 8px;
+  font-size: 7px;
   color: var(--sy-text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -133,9 +133,9 @@ body,
   align-items: center;
   justify-content: center;
   gap: var(--sy-4);
-  width: 210px;
-  height: 210px;
-  padding: 0 var(--sy-7);
+  width: 176px;
+  height: 176px;
+  padding: 0 var(--sy-6);
   border-radius: 50%;
   background: var(--sy-scrim);
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
