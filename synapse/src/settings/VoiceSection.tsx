@@ -5,6 +5,7 @@ import { formatBytes, useModelDownload } from "../modelDownload";
 import { useTtsSetup } from "../ttsSetup";
 import { ASR_MODEL, TTS_ENGINE, TTS_VOICES, type Settings } from "../models";
 import { MicIcon, SpeakerIcon, StopIcon, WaveIcon } from "./icons";
+import { chooseAndPreviewVoice, isCurrentPreview } from "./voicePreview";
 
 interface VoiceSectionProps {
   settings: Settings;
@@ -14,21 +15,21 @@ interface VoiceSectionProps {
 export default function VoiceSection({ settings, onChange }: VoiceSectionProps) {
   const model = useModelDownload();
   const tts = useTtsSetup();
-  const [voiceChoice, setVoiceChoice] = useState(settings.tts.voice);
-  const [previewing, setPreviewing] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState("");
   const previewGeneration = useRef<number | null>(null);
+  const previewRequest = useRef(0);
 
   useEffect(() => {
     const listeners = [
       listen<number>("tts-ended", (event) => {
-        if (event.payload === previewGeneration.current) {
+        if (isCurrentPreview(previewGeneration.current, event.payload)) {
           previewGeneration.current = null;
-          setPreviewing(false);
+          setPreviewingVoice(null);
         }
       }),
       listen<string>("tts-error", (event) => {
-        setPreviewing(false);
+        setPreviewingVoice(null);
         setPreviewError(event.payload);
       }),
     ];
@@ -37,18 +38,24 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
     };
   }, []);
 
-  function previewVoice() {
+  async function selectVoice(voice: string) {
+    const request = ++previewRequest.current;
     setPreviewError("");
-    setPreviewing(true);
-    invoke<number>("preview_voice", { voice: voiceChoice })
-      .then((generation) => {
-        previewGeneration.current = generation;
-      })
-      .catch((error) => {
-        previewGeneration.current = null;
-        setPreviewing(false);
-        setPreviewError(String(error));
+    setPreviewingVoice(voice);
+    try {
+      const generation = await chooseAndPreviewVoice({
+        voice,
+        settings,
+        save: onChange,
+        preview: (selected) => invoke<number>("preview_voice", { voice: selected }),
       });
+      if (request === previewRequest.current) previewGeneration.current = generation;
+    } catch (error) {
+      if (request !== previewRequest.current) return;
+      previewGeneration.current = null;
+      setPreviewingVoice(null);
+      setPreviewError(String(error));
+    }
   }
 
   return (
@@ -178,7 +185,7 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
         )}
         {tts.error && <div className="set-card-row set-error" role="alert">{tts.error}</div>}
 
-        <label className="set-card-row">
+        <div className="set-card-row set-voice-row">
           <span className="set-row-icon">
             <WaveIcon />
           </span>
@@ -188,31 +195,25 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               <span className="set-sublabel">Install the engine above to choose a voice</span>
             )}
           </span>
-          <div className="set-control set-voice-control">
-            <select
-              className="set-input"
-              disabled={!tts.ready}
-              value={voiceChoice}
-              onChange={(e) => setVoiceChoice(e.target.value)}
-            >
-              {TTS_VOICES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <button className="set-btn set-btn-quiet" disabled={!tts.ready || previewing} onClick={previewVoice}>
-              {previewing ? "Playing…" : "Preview"}
-            </button>
-            <button
-              className="set-btn"
-              disabled={!tts.ready || voiceChoice === settings.tts.voice}
-              onClick={() => onChange({ ...settings, tts: { ...settings.tts, voice: voiceChoice } })}
-            >
-              Use voice
-            </button>
+          <div className="set-voice-grid" role="radiogroup" aria-label="Voice">
+            {TTS_VOICES.map((voice) => (
+              <button
+                key={voice}
+                type="button"
+                className="set-voice-option"
+                role="radio"
+                aria-checked={voice === settings.tts.voice}
+                disabled={!tts.ready}
+                onClick={() => selectVoice(voice)}
+              >
+                <span>{voice}</span>
+                <span className="set-voice-state">
+                  {previewingVoice === voice ? "Playing…" : voice === settings.tts.voice ? "Selected" : "Preview"}
+                </span>
+              </button>
+            ))}
           </div>
-        </label>
+        </div>
         {previewError && <div className="set-card-row set-error" role="alert">{previewError}</div>}
       </div>
       <p className="set-hint">
