@@ -3,7 +3,7 @@
 [![CI](https://github.com/sahil-sharma-50/Synapse/actions/workflows/pr.yml/badge.svg)](https://github.com/sahil-sharma-50/Synapse/actions/workflows/pr.yml)
 
 <p align="center">
-  <img src="assets/synapse.png" alt="Synapse desktop app" width="720" />
+  <img src="assets/synapse-overview.png" alt="Synapse desktop app" width="720" />
 </p>
 
 <p align="center">
