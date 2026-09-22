@@ -1,27 +1,29 @@
-# CLAUDE.md
+# Agent guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for coding agents and contributors working in this repository. UI work also follows `synapse/src/AGENTS.md` and `DESIGN.md`.
 
 ## What this is
 
-Synapse is a cross-platform (Windows-first, macOS untested) desktop utility built with Tauri v2 (Rust backend) + React/TypeScript (frontend). A global hotkey (`Ctrl+Alt+Enter`) opens a circular radial menu at the cursor with actions: Speech-to-Text, AI chat, Screenshot, Snippet, Notepad, Speak Selected Text, Settings, Force Quit.
+Synapse is a Windows-first desktop utility built with Tauri v2 (Rust backend) + React/TypeScript (frontend). A global hotkey (`Ctrl+Alt+Enter` by default) opens a radial menu at the cursor with Speech-to-Text, AI, Screenshot, Clipboard, Notepad (Notes Hub), Speak Selected Text, Settings, and Force Quit. macOS code exists but is untested.
 
-Read `synapse_prd.md` for full product rationale and `PROGRESS.md` for session-by-session history, what's built/verified, and known gaps. `PROGRESS.md` is the single source of truth for current project status — check it before starting new work.
+Read `README.md` for current user-facing behavior and the top of `PROGRESS.md` for current status. Older `PROGRESS.md` entries and `synapse_prd.md` are historical; verify claims against the code before reusing them.
 
 ## Repo layout
 
 - `synapse/` - the app (Tauri v2 + React/TS/Vite). See `synapse/README.md`.
 - `spikes/` - throwaway proofs of concept, not part of the shipped app. See `spikes/asr-spike/README.md`.
-- `synapse_prd.md` - product requirements and architectural rationale.
-- `PROGRESS.md` - session handoff log: what's done, what's verified, what's next.
+- `CONTRIBUTING.md` - contributor setup, checks, and pull request guidance.
+- `DESIGN.md` and `synapse/src/AGENTS.md` - UI guidance.
+- `synapse_prd.md` - original v1 requirements and rationale (historical).
+- `PROGRESS.md` - current snapshot followed by historical session notes.
 
 ## Commands
 
 All run from `synapse/`:
 
 ```bash
-npm install
-npm approve-scripts esbuild   # one-time, allows esbuild's install script to run
+npm ci
+npm approve-scripts esbuild   # only if npm prompts on a fresh install
 npm run tauri dev             # starts Vite + launches the Tauri app window
 npm run tauri build           # production build, produces the NSIS .exe installer on Windows
 npm run typecheck             # tsc --noEmit
@@ -43,7 +45,7 @@ cargo fmt                     # rustfmt.toml sets max_width = 120 to match the e
 
 ## CI
 
-`.github/workflows/pr.yml` runs on every PR: repo guards, frontend (typecheck/lint/test/build), Rust (clippy `-D warnings` + `cargo test --lib`, on `windows-latest`), formatting, and `cargo audit`. The NSIS installer build is a separate workflow, scoped to PRs touching `src-tauri/` plus manual dispatch, because it takes minutes.
+`.github/workflows/pr.yml` runs on PRs and pushes to main: repo guards, frontend (typecheck/lint/test/build), Rust (clippy `-D warnings` + `cargo test --lib`, on `windows-latest`), and `cargo audit`. The changed-file formatting job runs on PRs. The NSIS installer build is a separate workflow, scoped to PRs touching packaging inputs plus manual dispatch, because it takes minutes.
 
 **Prettier is a ratchet, rustfmt is a wall.** The frontend predates Prettier, so CI only checks the `.ts/.tsx/.css/.json/...` files a PR actually touches. Touching one means formatting it — `npm run format` on your own changes.
 
@@ -82,7 +84,7 @@ Windows dev workflow when `npm run tauri dev`'s own output is unreliable to capt
 
 **Focus model: capture-then-restore, not non-activating windows.** A non-activating overlay (`WS_EX_NOACTIVATE`) was tried first and broke mouse clicks on Windows. The app now calls `GetForegroundWindow()` before showing any window and `SetForegroundWindow()` back before text injection or on dismiss. See PRD §6.1 for the full pivot rationale.
 
-**Settings persistence.** `settings.rs` is a hand-rolled JSON store (not `tauri-plugin-store`); `notes.rs` and `clipboard_history.rs` follow the same shape. `load`/`save` take a `&Path` so they're unit-testable without a Tauri runtime. Unknown/missing fields default gracefully for forward/backward compat as new settings sections get added. A corrupt file falls back to defaults and is backed up to `.bak`. `update_settings` writes the file then broadcasts a `settings-changed` event, since long-lived windows like the AI panel are only ever hidden and won't otherwise notice a change.
+**Settings persistence.** `settings.rs` is a JSON store (not `tauri-plugin-store`); notes, clipboard history, AI history, and usage are stored in SQLite. Settings `load`/`save` take a `&Path` so they're unit-testable without a Tauri runtime. Unknown/missing fields default gracefully for forward/backward compat. A corrupt settings file falls back to defaults and is backed up to `.bak`. `update_settings` writes the file then broadcasts a `settings-changed` event, since long-lived windows like the AI panel are only ever hidden and won't otherwise notice a change.
 
 **API keys never touch `settings.json`.** They go through the OS keychain via the `keyring` crate (`set_api_key`/`delete_api_key`/`has_api_key`). `keyring` must be declared with the `windows-native`/`apple-native` feature per-target in `Cargo.toml` — plain `keyring = "3"` silently compiles an in-memory mock store that always reports success but never actually persists anything.
 
@@ -96,7 +98,7 @@ Windows dev workflow when `npm run tauri dev`'s own output is unreliable to capt
 
 **Clipboard history watches by polling `GetClipboardSequenceNumber`**, not `AddClipboardFormatListener` — a listener needs an HWND with a message pump, i.e. subclassing a Tauri window's wndproc, which already failed here once (WRY silently re-subclasses the overlay). Critically, `inject.rs` exposes a `ClipboardGuard` that suppresses the watcher around Synapse's own clipboard writes: `paste_text` writes _twice_ (the injected text, then the restored previous contents), so without it every dictation and paste would be logged back as things the user copied. The guard is a **counter, not a bool** (paste/copy nest in the speak-selected path) plus a 600 ms tail (the OS reports the bump asynchronously, after the function returns) plus a last-write content check.
 
-**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration, all Tauri commands and window setup), `asr.rs` (speech-to-text), `inject.rs` (text injection + clipboard-write suppression), `notes.rs` (sticky notes store), `clipboard_history.rs`, `ids.rs`, `screenshot.rs`, `sentences.rs` (speech chunking), `ai.rs`, `settings.rs`, `model_download.rs`, `tts.rs` (OS TTS fallback), `tts_setup.rs` (installs the optional local voice engine), `tts_pocket.rs` (pocket-tts sidecar protocol + audio queue), `updater.rs` (in-app updates).
+**Rust source map** (`synapse/src-tauri/src/`): `lib.rs` (orchestration and windows), `asr.rs` (speech-to-text), `inject.rs` (text injection and clipboard guard), `notes.rs`, `clipboard_history.rs`, `ai_history.rs`, `ai_usage.rs`, `storage.rs` (SQLite), `ai.rs`, `desktop.rs` and `hybrid.rs` (assisted desktop actions), `screenshot.rs`, `sentences.rs`, `settings.rs`, `model_download.rs`, `tts.rs`, `tts_setup.rs`, `tts_pocket.rs`, `updater.rs`.
 
 **In-app updates are `tauri-plugin-updater`, and the signature check is the whole point.** An updater downloads an executable and runs it, so it is the highest-consequence path in the app. The plugin fetches the signed `latest.json` from the endpoint in `tauri.conf.json`, verifies the installer's minisign signature against the pinned `pubkey` **before** executing anything, and installs. This was hand-rolled first — GitHub API, asset picking, manual download — and the version that reviewed badly was not the code but the trust model: byte-count validation is not integrity, and no amount of host pinning substitutes for a signature. Don't reintroduce a bespoke path here.
 
@@ -110,7 +112,7 @@ Three ways to silently break it, all guarded (`scripts/guards/update-feed.mjs`):
 
 Releases go out by pushing a `v*` tag, which runs `release.yml`. The version in `package.json`, `Cargo.toml` and `tauri.conf.json` must agree, and the release must not stay a draft — the endpoint resolves through `releases/latest/download/latest.json`.
 
-**Frontend source map** (`synapse/src/`): `App.tsx` (router by window label), `Wheel.tsx` + `wedges.ts` (radial menu), `NotesHub.tsx` + `StickyNote.tsx` + `noteColors.ts`, `Clipboard.tsx`, `AiPanel.tsx` (the voice orb), `Settings.tsx` + `settings/` (per-section components), `Onboarding.tsx`, `theme.css` (the design system — every other stylesheet `@import`s it), `modelDownload.ts` (shared download-progress hook used by both onboarding and Settings → Voice), `ttsSetup.ts` (stage-aware voice-engine setup hook, same two consumers), `models.ts` (shared `Provider`/`Settings` types, model catalog, and the user-facing `ASR_MODEL`/`TTS_ENGINE` names).
+**Frontend source map** (`synapse/src/`): `App.tsx` (router by window label), `Wheel.tsx` + `wedges.ts` (radial menu), `NotesHub.tsx` + `RichNoteEditor.tsx` + `StickyNote.tsx`, `Clipboard.tsx`, `AiPanel.tsx` (voice orb), `Settings.tsx` + `settings/` (Controls, Wheel & color, AI, Voice, Clipboard, Usage, Conversations, Updates), `Onboarding.tsx`, `theme.css` (design tokens), `modelDownload.ts`, `ttsSetup.ts`, `models.ts` (shared settings and model catalog).
 
 **One design system, in `theme.css`.** Colour, spacing, type, radius, elevation and motion are all tokens there; window stylesheets must not type raw hex values or bare pixel gaps. Before it existed the same background was retyped in four files and error red existed in three shades. Two rules from it are easy to break: declare elevation **once** (a border or a shadow, never both), and keep note colours in `noteColors.ts` in step with `notes::COLORS` in Rust — the backend rejects any colour it doesn't know.
 

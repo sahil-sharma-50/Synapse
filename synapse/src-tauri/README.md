@@ -1,34 +1,23 @@
-# src-tauri
+# Rust backend
 
-Rust backend for the Synapse Tauri app.
+Tauri commands and desktop integration for Synapse. See the root [AGENTS.md](../../AGENTS.md) for architecture and [CONTRIBUTING.md](../../CONTRIBUTING.md) for the full check list.
 
-## Source files
+## Source map
 
-- `lib.rs` - orchestration: all Tauri commands, window setup, hotkey handling, the overlay/focus lifecycle.
-- `main.rs` - entry point, calls into `lib.rs`.
-- `asr.rs` - speech-to-text via `parakeet-rs`, mic capture and resampling via `cpal`.
-- `ai.rs` - AI chat, raw HTTP + blocking SSE for Anthropic and OpenAI, no file I/O.
-- `settings.rs` - JSON settings store, `load`/`save` take a `&Path` so they're unit-testable.
-- `model_download.rs` - resumable ASR model downloader, pure and Tauri-free.
-- `inject.rs` - clipboard paste-and-restore text injection via `enigo`.
-- `notes.rs` - Notepad scratchpad persistence.
-- `screenshot.rs` - screenshot capture via `xcap`, pinned to 0.9 (0.3 has a different API).
-- `snippets.rs` - saved text snippet CRUD.
-- `tts.rs` - OS text-to-speech, the always-available fallback voice.
-- `tts_setup.rs` - one-time setup for the optional local voice engine: downloads a standalone Python runtime, pip-installs `torch` (CPU) + `pocket-tts`, pre-warms the model weights, then writes a `READY` marker. Emits `tts-setup-progress`/`-done`/`-error`.
-- `tts_pocket.rs` - runs the `pocket-tts` Python sidecar over a line-delimited JSON stdin/stdout protocol.
+- `lib.rs` — command registration, window lifecycle, shortcuts, and orchestration.
+- `asr.rs`, `model_download.rs` — local dictation and resumable ASR model download.
+- `ai.rs`, `ai_history.rs`, `ai_usage.rs`, `desktop.rs`, `hybrid.rs` — provider requests, conversation and usage storage, and assisted desktop actions.
+- `notes.rs`, `clipboard_history.rs`, `storage.rs` — notes, clipboard history, and SQLite storage.
+- `inject.rs`, `screenshot.rs` — focus-aware text insertion and screen capture.
+- `sentences.rs`, `tts.rs`, `tts_setup.rs`, `tts_pocket.rs` — speech chunking, OS voice fallback, optional local voice setup, and playback.
+- `settings.rs`, `updater.rs` — preferences, keychain-backed credentials, and signed in-app updates.
 
-## Commands
+## Checks
 
-```bash
-cargo build
-cargo test --lib              # unit tests: settings, ai, model_download, inject, tts_setup, tts_pocket, lib
-cargo test --lib <test_name>  # run a single test
+```powershell
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --lib
 ```
 
-## Notes
-
-- `keyring` must keep its `windows-native` (Windows) / `apple-native` (macOS) feature in `Cargo.toml`. Without it, `keyring` silently uses an in-memory mock store: API key saves report success but never actually persist.
-- The ASR model (Parakeet TDT 0.6B v2, int8 ONNX, ~630 MB) is not checked in. It downloads into `model/` on first run via `model_download.rs`; `model/` is gitignored.
-- The optional local voice engine is not checked in either. `tts_setup.rs` installs it under `app_data_dir()/tts-env/` (`%APPDATA%\com.synapse.app\tts-env\` on Windows) and treats the `READY` marker file as the single source of truth for "is setup complete" — delete that file to force a re-run.
-- See the root `CLAUDE.md` for the fuller architecture picture (window routing, focus model, settings broadcast pattern).
+The ASR model and optional voice engine download into the user's app data directory; neither belongs in Git. Keep `keyring`'s native platform features and the official `tauri-plugin-updater` signature verification path. Pull request installer builds use `tauri.pr-build.conf.json` without signing; only the maintainer's release workflow can sign updater artifacts.

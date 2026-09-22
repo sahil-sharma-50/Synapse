@@ -13,7 +13,7 @@ a destination. That single fact decides most of the design:
   window composited over unknown desktop content and appears without warning; a
   light surface would flash as glare on every summon. The utility windows follow
   the overlay so the app reads as one product rather than an overlay plus a set
-  of dialogs.
+  of dialogs. The default utility accent is neutral; users can choose a subtle accent in Settings.
 - **Operate, not Persuade.** Every surface except the orb is a task surface.
   Scanability, a single alignment axis, and native expectations outrank
   expression. Brand lives in the details — the icon rhythm, the focus ring, the
@@ -66,8 +66,8 @@ missing; add it centrally.
   click-to-open hint. Clicking anywhere on it opens the folder; it dismisses
   automatically after four seconds.
 - **Settings** (`Settings.css`) — two panes, one trailing control axis so every
-  row lines up regardless of label length. A branded sidebar groups six direct
-  destinations without redundant category headings. Save status sits above the
+  row lines up regardless of label length. The sidebar provides Controls, Wheel & color,
+  AI, Voice, Clipboard, Usage, Conversations, and Updates. Save status sits above the
   content; failed loads and writes offer recovery. Compact rows, wrapping help
   text, and paired clipboard capture options keep the content dense. Controls
   records global and per-tool shortcuts as aligned keycaps. Wheel & color controls
@@ -77,7 +77,7 @@ missing; add it centrally.
   and focus uses one restrained edge. Opens at 860×640, collapses
   to an icon rail under 620px, and stacks controls in narrow windows.
 - **Setup** (`Onboarding.css`) — charcoal task surface, numbered and named steps,
-  shared stroke icons, flat blue primary actions. The final screen reports model,
+  shared stroke icons, token-based primary actions. The final screen reports model,
   microphone and optional voice readiness separately, including skipped setup.
 - **Installer** — native Windows installer controls with a charcoal sidebar,
   compact Synapse mark and shortcut. Artwork is regenerated using the portable
@@ -87,16 +87,20 @@ missing; add it centrally.
   row. Notes and Clipboard share dark context menus with clear destructive actions,
   selection checkboxes, and bulk controls. Permanent note deletion asks for confirmation.
   Deleting a folder moves its notes to Recently Deleted so they can be restored.
-- **Notes editor** ? compact icon toolbar, quieter metadata, and a caret-led editing
+- **Notes editor** — compact icon toolbar, quieter metadata, and a caret-led editing
   surface with no bright rectangular focus outline.
 - **Sticky notes** (`StickyNote.css`) — deep, desaturated colours rather than
   highlighter yellows, because these float over a dark desktop all day. Each
   note tints its own ink from its own hue.
 - **AI orb** (`AiPanel.css`) — the one Experience surface. The orb _is_ the
-  interface: the only large element, the only thing that moves, and every
-  conversation state is legible from it across the room. Colour carries state
-  (blue idle/listening → violet thinking → amber speaking) so it never needs to
-  be read. The transcript is deliberately quiet — no bubbles, no avatars, no
-  timestamps — because it exists to be _checked_, not read. If the transcript
-  ever starts competing for attention, this has drifted back into being a chat
-  window with a logo on it.
+  interface: the only large element, the only thing that moves. Listening,
+  thinking, speaking, idle, and error states need distinct motion or text; colour
+  alone cannot carry status. The transcript stays visually quiet so the current
+  task remains clear.
+
+## UI review checklist
+
+- Check hover, keyboard focus, disabled, loading, empty, and error states for changed controls.
+- Check labels and status announcements with a keyboard and screen reader in mind. Do not rely on colour alone.
+- Check the narrow Settings layout, long text, and `prefers-reduced-motion`.
+- Confirm a change to a shared token or control across the wheel, Settings, Notes, Clipboard, and onboarding.

@@ -1,5 +1,15 @@
 # Synapse — Session Handoff
 
+## Current snapshot (2026-09-22)
+
+v0.2.2 is published for Windows x64 with a signed NSIS installer, signature, and `latest.json`. Existing Windows installs can use Settings → Updates to check and choose when to install it. The frontend, Rust, guard, and release workflows passed for that tag.
+
+The current app has an eight-action wheel, configurable shortcuts and appearance, local dictation, an AI voice orb with Anthropic/OpenAI/OpenRouter, assisted desktop actions, clipboard history, Notes Hub and sticky notes, screenshots, optional local TTS, AI conversation history and usage, and signed in-app updates. See [README.md](README.md) for the user-facing feature list and [AGENTS.md](AGENTS.md) for the current source map.
+
+**Current limits:** macOS code has not been validated on Mac hardware. The published installer and update feed are Windows x64. The entries below are historical session notes; their old feature lists, test counts, and next-step lists are not a current roadmap. Check the code and open issues before starting work.
+
+---
+
 ## In-app updates: signature verification for PR #20 (2026-08-06)
 
 The #20 review flagged that the hand-rolled updater ran a downloaded `.exe`
