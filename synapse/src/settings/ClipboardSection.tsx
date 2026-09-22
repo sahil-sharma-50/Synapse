@@ -50,7 +50,7 @@ export default function ClipboardSection({ settings, onChange }: ClipboardSectio
         </p>
       </div>
 
-      <div className="set-card-title">History</div>
+      <h3 className="set-card-title">History</h3>
       <div className="set-card">
         <label className="set-card-row">
           <span className="set-row-icon">
@@ -115,7 +115,7 @@ export default function ClipboardSection({ settings, onChange }: ClipboardSectio
         </div>
       </div>
 
-      <div className="set-card-title">Capture</div>
+      <h3 className="set-card-title">Capture</h3>
       <div className="set-card set-grid-card">
         {(
           [
@@ -141,7 +141,7 @@ export default function ClipboardSection({ settings, onChange }: ClipboardSectio
         ))}
       </div>
 
-      <div className="set-card-title">Retention</div>
+      <h3 className="set-card-title">Retention</h3>
       <div className="set-card">
         <label className="set-card-row">
           <span className="set-label-stack">

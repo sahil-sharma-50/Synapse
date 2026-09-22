@@ -5596,14 +5596,16 @@ dependencies = [
 
 [[package]]
 name = "synapse"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "clipboard-win",
  "cpal 0.17.1",
  "dirs",
  "enigo",
  "flate2",
+ "image",
  "keyring",
  "mockito",
  "parakeet-rs",
@@ -5622,8 +5624,10 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "webview2-com",
  "window-vibrancy 0.8.0",
  "windows 0.62.2",
+ "windows-core 0.61.2",
  "xcap",
 ]
 

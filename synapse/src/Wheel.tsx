@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { WEDGES, WHEEL_GEOMETRY, WedgeId, wedgePath, iconPosition } from "./wedges";
+import type { Settings } from "./models";
 import "./App.css";
 
 const { size: SIZE, outerRadius: R_OUTER, innerRadius: R_INNER } = WHEEL_GEOMETRY;
@@ -62,6 +63,19 @@ export function StatusCircle({
       <div
         className={`status-circle${tone === "error" ? " status-circle-error" : ""}${onClick ? " status-clickable" : ""}`}
         onClick={onClick}
+        role={onClick ? "button" : "status"}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={
+          onClick
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onClick();
+                }
+              }
+            : undefined
+        }
       >
         {children}
         <span className="status-title">{title}</span>
@@ -104,6 +118,9 @@ function formatElapsed(ms: number): string {
 }
 
 export default function Wheel() {
+  const [wheelSize, setWheelSize] = useState(100);
+  const [wheelTools, setWheelTools] = useState<WedgeId[]>(WEDGES.map((tool) => tool.id));
+  const visibleWedges = WEDGES.filter((tool) => wheelTools.includes(tool.id));
   const [hovered, setHovered] = useState<WedgeId | null>(null);
   const [mode, setMode] = useState<Mode>("menu");
   const [error, setError] = useState("");
@@ -117,6 +134,28 @@ export default function Wheel() {
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
   const selectedSpeechPending = useRef(false);
+  const speechGeneration = useRef<number | null>(null);
+
+  useEffect(() => {
+    const apply = (settings: Settings) => {
+      setWheelTools(settings.appearance.wheel_tools);
+      setWheelSize(settings.appearance.wheel_size);
+    };
+    const unlisten = listen<Settings>("settings-changed", (event) => apply(event.payload));
+    invoke<Settings>("get_settings")
+      .then(apply)
+      .catch(() => {});
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  function stopSelectedSpeech() {
+    selectedSpeechPending.current = false;
+    speechGeneration.current = null;
+    setMode("menu");
+    void invoke("stop_speaking").then(() => invoke("dismiss_overlay"));
+  }
 
   function endPress() {
     pressOrigin.current = null;
@@ -135,7 +174,7 @@ export default function Wheel() {
       // While recording, Esc stops the capture; the backend then tears the
       // overlay down itself once it has finished.
       if (mode === "listening") invoke("stop_dictation");
-      else if (mode === "speaking") invoke("stop_speaking");
+      else if (mode === "speaking") stopSelectedSpeech();
       else invoke("dismiss_overlay");
     };
     window.addEventListener("keydown", onKey);
@@ -170,15 +209,23 @@ export default function Wheel() {
     const unlistenToast = listen<Toast>("toast", (e) => {
       selectedSpeechPending.current = false;
       setToast(e.payload);
+      setError("");
       setMode("toast");
     });
-    const unlistenSpeechStarted = listen("tts-started", () => {
-      if (!selectedSpeechPending.current) return;
+    const unlistenSelected = listen("selected-speech-requested", () => {
+      selectedSpeechPending.current = true;
+      speechGeneration.current = null;
+    });
+    const unlistenRequested = listen<number>("tts-requested", (event) => {
+      if (selectedSpeechPending.current) speechGeneration.current = event.payload;
+    });
+    const unlistenSpeechStarted = listen<number>("tts-started", (event) => {
+      if (!selectedSpeechPending.current || speechGeneration.current !== event.payload) return;
       setMode("speaking");
       invoke("show_speech_controls");
     });
-    const unlistenSpeechEnded = listen("tts-ended", () => {
-      if (!selectedSpeechPending.current) return;
+    const unlistenSpeechEnded = listen<number>("tts-ended", (event) => {
+      if (!selectedSpeechPending.current || speechGeneration.current !== event.payload) return;
       selectedSpeechPending.current = false;
       invoke("dismiss_overlay");
     });
@@ -197,6 +244,8 @@ export default function Wheel() {
       unlistenTick.then((f) => f());
       unlistenError.then((f) => f());
       unlistenToast.then((f) => f());
+      unlistenSelected.then((f) => f());
+      unlistenRequested.then((f) => f());
       unlistenSpeechStarted.then((f) => f());
       unlistenSpeechEnded.then((f) => f());
       unlistenSpeechError.then((f) => f());
@@ -210,7 +259,10 @@ export default function Wheel() {
     } else if (id === "quit") {
       invoke("force_quit"); // no confirmation, no toast — the process ends immediately
     } else {
-      if (id === "speak-selected") selectedSpeechPending.current = true;
+      if (id === "speak-selected") {
+        selectedSpeechPending.current = true;
+        speechGeneration.current = null;
+      }
       invoke("select_wedge", { wedge: id });
     }
   }
@@ -247,7 +299,7 @@ export default function Wheel() {
         title="Speaking…"
         detail="Press Esc or use the button to interrupt"
         actionLabel="Stop speaking"
-        onAction={() => invoke("stop_speaking")}
+        onAction={stopSelectedSpeech}
       >
         <svg viewBox="0 0 24 24" className="status-speaking-icon" aria-hidden="true">
           <path d="M4 10v4h4l5 4V6l-5 4H4Zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12Z" />
@@ -257,27 +309,37 @@ export default function Wheel() {
   }
 
   if (mode === "toast" && toast) {
-    const reveal = () => {
-      if (toast.path) invoke("reveal_path", { path: toast.path });
-      invoke("dismiss_overlay");
+    const reveal = async () => {
+      try {
+        if (toast.path) await invoke("reveal_path", { path: toast.path });
+        await invoke("dismiss_overlay");
+      } catch (cause) {
+        setError(String(cause));
+      }
     };
     return (
       <StatusCircle
         title={toast.title}
         tone={toast.tone === "error" ? "error" : undefined}
-        onClick={reveal}
+        onClick={toast.path ? () => void reveal() : undefined}
         detail={
           <>
-            <span className="status-path">{toast.detail}</span>
-            {toast.path && <span className="status-action">Click to open</span>}
+            <span className="status-path" title={toast.path || toast.detail}>
+              {toast.detail}
+            </span>
+            {error ? (
+              <span className="status-warn" role="alert">
+                {error}
+              </span>
+            ) : (
+              toast.path && <span className="status-action">Click to open folder</span>
+            )}
           </>
         }
       >
-        {toast.tone === "ok" && (
-          <svg viewBox="0 0 24 24" className="status-check">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        )}
+        <svg className="status-check" viewBox="0 0 24 24" aria-hidden="true">
+          <path d={toast.tone === "ok" ? "m5 12 4 4L19 6" : "m7 7 10 10M17 7 7 17"} />
+        </svg>
       </StatusCircle>
     );
   }
@@ -298,17 +360,17 @@ export default function Wheel() {
       }}
     >
       <svg
-        width={SIZE}
-        height={SIZE}
+        width={(SIZE * wheelSize) / 100}
+        height={(SIZE * wheelSize) / 100}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           if (e.target === e.currentTarget) invoke("dismiss_overlay");
         }}
       >
-        {WEDGES.map((wedge, i) => {
-          const d = wedgePath(i, WEDGES.length, CENTER, CENTER, R_OUTER, R_INNER);
-          const { x, y } = iconPosition(i, WEDGES.length, CENTER, CENTER, R_ICON);
+        {visibleWedges.map((wedge, i) => {
+          const d = wedgePath(i, visibleWedges.length, CENTER, CENTER, R_OUTER, R_INNER);
+          const { x, y } = iconPosition(i, visibleWedges.length, CENTER, CENTER, R_ICON);
           const isHovered = hovered === wedge.id;
           return (
             <g
@@ -381,7 +443,7 @@ export default function Wheel() {
         />
       </svg>
 
-      <div className="hub-label">
+      <div className="hub-label" style={{ transform: `scale(${wheelSize / 100})` }}>
         <span className="wheel-hub-title">
           {hoveredWedge ? hoveredWedge.label : "Pick an action"}
         </span>

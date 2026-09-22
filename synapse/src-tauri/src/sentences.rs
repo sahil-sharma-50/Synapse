@@ -16,11 +16,6 @@ const MIN_CHARS: usize = 40;
 /// stall playback waiting for a full stop that never arrives.
 const MAX_CHARS: usize = 320;
 
-/// The first one-shot chunk has a tighter ceiling because nothing can play
-/// until it has finished synthesizing. Later chunks use `MAX_CHARS` and are
-/// prepared while earlier audio is already playing.
-const FAST_START_CHARS: usize = 96;
-
 /// Words that end in a period without ending a sentence.
 const ABBREVIATIONS: &[&str] = &[
     "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "etc", "eg", "ie", "cf", "al", "approx", "dept",
@@ -274,35 +269,6 @@ pub fn split_all(text: &str) -> Vec<String> {
     out
 }
 
-/// One-shot splitting tuned for low time-to-first-audio. Streaming AI text
-/// already arrives incrementally, so only selected text needs this extra first
-/// cut after the ordinary sentence-aware split.
-pub fn split_for_fast_start(text: &str) -> Vec<String> {
-    let mut chunks = split_all(text);
-    let Some(first) = chunks.first() else { return chunks };
-    if first.chars().count() <= FAST_START_CHARS {
-        return chunks;
-    }
-
-    let mut fallback = first.len();
-    let mut word_break = None;
-    for (char_count, (byte_index, c)) in first.char_indices().enumerate() {
-        if char_count == FAST_START_CHARS {
-            fallback = byte_index;
-            break;
-        }
-        if char_count >= MIN_CHARS && c.is_whitespace() {
-            word_break = Some(byte_index);
-        }
-    }
-    let cut = word_break.unwrap_or(fallback);
-    let remainder = first[cut..].trim().to_string();
-    let fast = first[..cut].trim().to_string();
-    chunks[0] = fast;
-    chunks.insert(1, remainder);
-    chunks
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,29 +282,21 @@ mod tests {
     }
 
     #[test]
-    fn one_shot_text_caps_the_first_chunk_for_fast_startup() {
+    fn one_shot_text_preserves_sentence_delivery() {
         let text = "This deliberately long opening sentence contains enough words to make neural speech synthesis noticeably slow before the first sound is ready, even though the rest can be prepared while that first piece is already playing. A second sentence follows.";
-        let chunks = split_for_fast_start(text);
-
-        assert!(
-            chunks.len() >= 3,
-            "long opening sentence should be split early: {chunks:?}"
-        );
-        assert!(
-            chunks[0].chars().count() <= 96,
-            "first chunk was too large: {:?}",
-            chunks[0]
-        );
+        let chunks = split_all(text);
+        assert_eq!(chunks.len(), 2, "Do not restart the voice mid-sentence");
+        assert!(chunks.iter().all(|chunk| chunk.ends_with('.')));
         assert_eq!(chunks.join(" "), text);
     }
 
     #[test]
-    fn fast_start_cut_preserves_unbroken_unicode_text() {
+    fn bounded_chunks_preserve_unbroken_unicode_text() {
         let text = "🙂a".repeat(180);
-        let chunks = split_for_fast_start(&text);
+        let chunks = split_all(&text);
 
         assert_eq!(chunks.concat(), text);
-        assert!(chunks[0].chars().count() <= 96);
+        assert!(chunks[0].chars().count() <= MAX_CHARS);
     }
 
     /// The streaming half of the problem: a terminator at the very end of the

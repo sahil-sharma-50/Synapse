@@ -1,9 +1,18 @@
-export type Provider = "anthropic" | "openai";
+import type { WedgeId } from "./wedges";
+
+export type Provider = "anthropic" | "openai" | "openrouter";
 
 export interface AiSettings {
+  hybrid?: boolean;
+  daily_budget?: number;
+  custom_greetings: string;
   provider: Provider;
   anthropic_model: string;
   openai_model: string;
+  openrouter_model: string;
+  speak_replies: boolean;
+  typing_mode: boolean;
+  enter_to_send: boolean;
 }
 
 export interface TtsSettings {
@@ -15,6 +24,8 @@ export const TTS_VOICES = ["alba", "giovanni", "lola", "juergen", "rafael", "est
 /** Dictation behaviour. Distinct from `TtsSettings`, which is the speaking side. */
 export interface VoiceSettings {
   auto_stop_on_silence: boolean;
+  silence_ms: number;
+  speech_threshold: number;
 }
 
 export interface ClipboardSettings {
@@ -34,6 +45,12 @@ export interface Settings {
   voice: VoiceSettings;
   clipboard: ClipboardSettings;
   onboarding_complete: boolean;
+  shortcuts: { wheel: string; dictation: string; tools: Partial<Record<WedgeId, string>> };
+  appearance: {
+    wheel_size: number;
+    accent: "neutral" | "blue" | "violet" | "amber";
+    wheel_tools: WedgeId[];
+  };
 }
 
 // What the user actually downloaded. Both engines were previously shown as the
@@ -58,6 +75,7 @@ export const TTS_ENGINE = {
 export const PROVIDER_LABELS: Record<Provider, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
+  openrouter: "OpenRouter",
 };
 
 // Curated per provider, with a "Custom…" escape hatch in the picker — model
@@ -66,10 +84,9 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
 export const MODEL_CATALOG: Record<Provider, string[]> = {
   anthropic: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
   openai: ["gpt-4o-mini", "gpt-4o"],
+  openrouter: ["openrouter/auto"],
 };
 
 export function modelFor(settings: Settings, provider: Provider): string {
-  return provider === "anthropic"
-    ? settings.ai.anthropic_model
-    : settings.ai.openai_model;
+  return settings.ai[`${provider}_model`];
 }

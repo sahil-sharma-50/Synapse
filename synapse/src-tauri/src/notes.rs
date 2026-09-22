@@ -256,6 +256,21 @@ pub fn move_to_trash(app: &tauri::AppHandle, id: &str, trashed: bool) -> Result<
     update_note(app, id, |note| note.trashed_at = trashed.then(now_ms))
 }
 
+fn trash_folder_in(connection: &rusqlite::Connection, folder: &str) -> Result<(), String> {
+    connection
+        .execute(
+            "UPDATE notes SET trashed_at = ?1 WHERE folder = ?2 AND trashed_at IS NULL",
+            rusqlite::params![now_ms(), folder],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+pub fn trash_folder(app: &tauri::AppHandle, folder: &str) -> Result<(), String> {
+    let connection = crate::storage::open(&crate::storage::app_path(app)?)?;
+    trash_folder_in(&connection, folder)
+}
+
 pub fn organize(app: &tauri::AppHandle, id: &str, folder: Option<String>, tags: Vec<String>) -> Result<(), String> {
     update_note(app, id, |note| {
         note.folder = folder.filter(|value| !value.trim().is_empty());
@@ -559,5 +574,35 @@ mod tests {
         let path = temp_dir("missing").join("nope.txt");
         let err = read_from(path.to_str().unwrap()).unwrap_err();
         assert!(err.contains("nope.txt"), "error should name the path: {err}");
+    }
+
+    #[test]
+    fn deleting_a_folder_trashes_only_its_active_notes_and_preserves_content() {
+        let connection = crate::storage::open(&temp_dir("trash-folder").join("synapse.db")).unwrap();
+        for (id, folder, trashed_at) in [("a", "Work", None), ("b", "Work", Some(10)), ("c", "Other", None)] {
+            insert_or_replace(
+                &connection,
+                &Note {
+                    id: id.into(),
+                    folder: Some(folder.into()),
+                    content: "Keep this".into(),
+                    trashed_at,
+                    ..Note::default()
+                },
+            )
+            .unwrap();
+        }
+        trash_folder_in(&connection, "Work").unwrap();
+        let rows: Vec<(String, Option<i64>, String)> = connection
+            .prepare("SELECT id, trashed_at, plain_text FROM notes ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(rows[0].1.is_some());
+        assert_eq!(rows[1].1, Some(10));
+        assert_eq!(rows[2].1, None);
+        assert!(rows.iter().all(|row| row.2 == "Keep this"));
     }
 }

@@ -1,6 +1,11 @@
 mod ai;
+mod ai_history;
+mod ai_usage;
 mod asr;
 mod clipboard_history;
+#[cfg(target_os = "windows")]
+mod desktop;
+mod hybrid;
 mod ids;
 mod inject;
 mod model_download;
@@ -19,7 +24,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_updater::UpdaterExt;
 
 const OVERLAY_LABEL: &str = "overlay";
@@ -34,6 +39,7 @@ const NOTE_LABEL_PREFIX: &str = "note-";
 /// changing one without the other silently kills all IPC in this window.
 const CLIPBOARD_LABEL: &str = "clipboard";
 const AI_LABEL: &str = "ai-panel";
+const AI_ORB_SIZE: f64 = 224.0;
 const SETTINGS_LABEL: &str = "settings";
 const ONBOARDING_LABEL: &str = "onboarding";
 /// Written by the NSIS post-install hook (see `installer/hooks.nsh`), consumed
@@ -158,10 +164,19 @@ pub fn restore_previous_focus() {
 // transparent corners hit the overlay root, which dismisses — the desired
 // behavior anyway, so nothing is lost by not clipping.
 
+static OVERLAY_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn show_overlay_at_cursor(app: &tauri::AppHandle) {
+    OVERLAY_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let Some(window) = app.get_webview_window(OVERLAY_LABEL) else {
         return;
     };
+    let percent = settings_path(app)
+        .map(|path| settings::load(&path).appearance.wheel_size)
+        .unwrap_or(100);
+    // Keep enough room for speech status and screenshot cards at small wheel sizes.
+    let logical_size = OVERLAY_SIZE * (f64::from(percent) / 100.0).max(1.0);
+    let _ = window.set_size(tauri::LogicalSize::new(logical_size, logical_size));
 
     #[cfg(target_os = "windows")]
     capture_previous_focus();
@@ -175,15 +190,17 @@ fn show_overlay_at_cursor(app: &tauri::AppHandle) {
             .flatten()
             .map(|monitor| {
                 let work_area = monitor.work_area();
+                let physical_size = (logical_size * monitor.scale_factor()).round() as u32;
+                let _ = window.set_size(tauri::PhysicalSize::new(physical_size, physical_size));
                 overlay_position(
                     (x, y),
                     (work_area.position.x, work_area.position.y),
                     (work_area.size.width, work_area.size.height),
-                    OVERLAY_SIZE as u32,
+                    physical_size,
                 )
             })
             .unwrap_or_else(|| {
-                let half = (OVERLAY_SIZE / 2.0) as i32;
+                let half = (logical_size * window.scale_factor().unwrap_or(1.0) / 2.0) as i32;
                 (x - half, y - half)
             });
         let _ = window.set_position(tauri::PhysicalPosition::new(position.0, position.1));
@@ -273,13 +290,35 @@ fn select_wedge(app: tauri::AppHandle, wedge: String) {
         }
         "ai" => {
             hide_overlay(&app);
+            if let Some(window) = app.get_webview_window(AI_LABEL) {
+                if let Ok(cursor) = app.cursor_position() {
+                    let monitor = window.monitor_from_point(cursor.x, cursor.y).ok().flatten();
+                    let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
+                    let size = (AI_ORB_SIZE * scale).round() as u32;
+                    let _ = window.set_size(tauri::PhysicalSize::new(size, size));
+                    let position = monitor
+                        .map(|m| {
+                            let area = m.work_area();
+                            overlay_position(
+                                (cursor.x as i32, cursor.y as i32),
+                                (area.position.x, area.position.y),
+                                (area.size.width, area.size.height),
+                                size,
+                            )
+                        })
+                        .unwrap_or((cursor.x as i32 - size as i32 / 2, cursor.y as i32 - size as i32 / 2));
+                    let _ = window.set_position(tauri::PhysicalPosition::new(position.0, position.1));
+                }
+            }
             show_utility_window(&app, AI_LABEL);
+            let _ = app.emit_to(AI_LABEL, "ai-shown", ());
         }
         "settings" => {
             hide_overlay(&app);
             show_utility_window(&app, SETTINGS_LABEL);
         }
         "speak-selected" => {
+            let _ = app.emit("selected-speech-requested", ());
             hide_overlay(&app);
             let app = app.clone();
             std::thread::spawn(move || {
@@ -348,27 +387,28 @@ impl Toast {
 /// Opens the folder containing `path` with the file selected. Called from the
 /// screenshot toast, which names a file the user may well want to go look at.
 #[tauri::command]
-fn reveal_path(app: tauri::AppHandle, path: String) {
+fn reveal_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     // Called through the plugin's Rust API rather than its JS command, so the
     // narrow `opener:allow-open-url` allowlist in capabilities/default.json
     // (deliberately ms-settings: only) doesn't need widening to every path.
-    if let Err(e) = app.opener().reveal_item_in_dir(&path) {
-        eprintln!("[synapse] could not reveal {path}: {e}");
-    }
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| format!("Could not open the screenshot folder: {e}"))
 }
 
 fn show_toast(app: &tauri::AppHandle, message: Toast) {
     /// The old 1500 ms was long enough to notice a flash and too short to read
     /// where the file went, which is the entire content of the message. Long
     /// enough to read a path, short enough not to feel stuck.
-    const TOAST_DWELL_MS: u64 = 3400;
+    const TOAST_DWELL_MS: u64 = 4000;
 
     let _ = app.emit("toast", message);
     // Let the webview render the toast state before the window is shown,
     // otherwise the wheel flashes for a frame first.
     std::thread::sleep(std::time::Duration::from_millis(60));
     show_overlay_at_cursor(app);
+    let epoch = OVERLAY_EPOCH.load(std::sync::atomic::Ordering::SeqCst);
 
     // Poll rather than sleeping the whole dwell in one go: the toast is
     // click- and Esc-dismissible, and once the user has dismissed it this
@@ -378,6 +418,9 @@ fn show_toast(app: &tauri::AppHandle, message: Toast) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(TOAST_DWELL_MS);
     while std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(80));
+        if OVERLAY_EPOCH.load(std::sync::atomic::Ordering::SeqCst) != epoch {
+            return;
+        }
         if let Some(w) = &window {
             if !w.is_visible().unwrap_or(true) {
                 return; // dismissed early; whoever hid it also restored focus
@@ -398,7 +441,7 @@ fn show_toast(app: &tauri::AppHandle, message: Toast) {
 /// physical button here, immediately before handing off to the OS, closes
 /// that window.
 #[tauri::command]
-fn start_overlay_drag(app: tauri::AppHandle) {
+fn start_overlay_drag(window: tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
@@ -408,9 +451,7 @@ fn start_overlay_drag(app: tauri::AppHandle) {
             return;
         }
     }
-    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = window.start_dragging();
-    }
+    let _ = window.start_dragging();
 }
 
 /// Failures here are reported rather than swallowed: a window that silently
@@ -456,6 +497,11 @@ fn show_utility_window(app: &tauri::AppHandle, label: &str) {
         return;
     };
     show_foreground(&window);
+    // The AI surface is only an orb; acrylic would fill its transparent corners.
+    if label == AI_LABEL {
+        let _ = window.set_always_on_top(true);
+        return;
+    }
     // A window created hidden does not always expose its native HWND in the
     // same message-loop tick as show(). Give WebView2 one frame before asking
     // window-vibrancy to attach the Acrylic backdrop.
@@ -681,6 +727,13 @@ fn trash_note(app: tauri::AppHandle, id: String, trashed: bool) -> Result<(), St
 }
 
 #[tauri::command]
+fn trash_note_folder(app: tauri::AppHandle, folder: String) -> Result<(), String> {
+    notes::trash_folder(&app, &folder)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 fn organize_note(app: tauri::AppHandle, id: String, folder: Option<String>, tags: Vec<String>) -> Result<(), String> {
     notes::organize(&app, &id, folder, tags)?;
     let _ = app.emit("notes-changed", ());
@@ -847,10 +900,8 @@ struct DictationTick {
 
 /// Whether dictation should end itself on trailing silence. Off by default —
 /// see `settings::VoiceSettings`.
-fn auto_stop_enabled(app: &tauri::AppHandle) -> bool {
-    settings_path(app)
-        .map(|p| settings::load(&p).voice.auto_stop_on_silence)
-        .unwrap_or(false)
+fn voice_settings(app: &tauri::AppHandle) -> settings::VoiceSettings {
+    settings_path(app).map(|p| settings::load(&p).voice).unwrap_or_default()
 }
 
 fn spawn_recording(app: tauri::AppHandle) {
@@ -866,7 +917,7 @@ fn spawn_recording(app: tauri::AppHandle) {
             hide_overlay(&app);
         };
 
-        let auto_stop = auto_stop_enabled(&app);
+        let voice = voice_settings(&app);
         let tick_app = app.clone();
         let on_tick = move |t: asr::Tick| {
             let _ = tick_app.emit(
@@ -879,7 +930,7 @@ fn spawn_recording(app: tauri::AppHandle) {
             );
         };
 
-        match asr::record_and_transcribe(auto_stop, on_tick) {
+        match asr::record_and_transcribe(voice, on_tick, || false) {
             Ok(text) if !text.trim().is_empty() => {
                 println!("[synapse] dictation: transcribed \"{text}\"");
                 hide_overlay(&app);
@@ -920,6 +971,7 @@ fn provider_status() -> std::collections::HashMap<&'static str, bool> {
     let mut status = std::collections::HashMap::new();
     status.insert("anthropic", ai::has_api_key(ai::Provider::Anthropic));
     status.insert("openai", ai::has_api_key(ai::Provider::Openai));
+    status.insert("openrouter", ai::has_api_key(ai::Provider::Openrouter));
     status
 }
 
@@ -940,8 +992,87 @@ fn get_settings(app: tauri::AppHandle) -> Result<settings::Settings, String> {
 /// config the next time it's shown — it has to be told.
 #[tauri::command]
 fn update_settings(app: tauri::AppHandle, settings: settings::Settings) -> Result<(), String> {
-    settings::save(&settings_path(&app)?, &settings)?;
+    let path = settings_path(&app)?;
+    let previous = settings::load(&path);
+    let changed = previous.shortcuts != settings.shortcuts;
+    if changed {
+        settings.shortcuts.parsed()?;
+        app.global_shortcut()
+            .unregister_multiple(previous.shortcuts.keys()?)
+            .map_err(|e| e.to_string())?;
+        if let Err(error) = register_shortcuts(&app, &settings.shortcuts) {
+            register_shortcuts(&app, &previous.shortcuts)
+                .map_err(|restore| format!("{error}; could not restore shortcuts: {restore}"))?;
+            return Err(error);
+        }
+    }
+    if let Err(error) = settings::save(&path, &settings) {
+        if changed {
+            app.global_shortcut()
+                .unregister_multiple(settings.shortcuts.keys()?)
+                .map_err(|e| e.to_string())?;
+            register_shortcuts(&app, &previous.shortcuts)?;
+        }
+        return Err(error);
+    }
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        let size = OVERLAY_SIZE * (f64::from(settings.appearance.wheel_size) / 100.0).max(1.0);
+        let _ = window.set_size(tauri::LogicalSize::new(size, size));
+    }
     let _ = app.emit("settings-changed", settings);
+    Ok(())
+}
+
+fn register_shortcuts(app: &tauri::AppHandle, shortcuts: &settings::ShortcutSettings) -> Result<(), String> {
+    let mut registered = Vec::new();
+    for (shortcut, action) in shortcuts.parsed()? {
+        let label = action.clone();
+        if let Err(error) = app.global_shortcut().on_shortcut(shortcut, move |app, _, event| {
+            if event.state() != ShortcutState::Pressed || SHORTCUT_RECORDING.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            match action.as_str() {
+                "wheel" => {
+                    show_overlay_at_cursor(app);
+                    let _ = app.emit("wheel-shown", ());
+                }
+                "stt" => begin_direct_dictation(app),
+                "quit" => app.exit(0),
+                action => {
+                    #[cfg(target_os = "windows")]
+                    capture_previous_focus();
+                    select_wedge(app.clone(), action.to_string());
+                }
+            }
+        }) {
+            app.global_shortcut()
+                .unregister_multiple(registered)
+                .map_err(|e| e.to_string())?;
+            return Err(format!("Shortcut for {label} is unavailable: {error}"));
+        }
+        registered.push(shortcut);
+    }
+    Ok(())
+}
+
+static SHORTCUT_RECORDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+fn set_shortcut_recording(app: tauri::AppHandle, recording: bool) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    if SHORTCUT_RECORDING.load(Ordering::SeqCst) == recording {
+        return Ok(());
+    }
+    let settings = settings::load(&settings_path(&app)?);
+    if recording {
+        app.global_shortcut()
+            .unregister_multiple(settings.shortcuts.keys()?)
+            .map_err(|e| e.to_string())?;
+        SHORTCUT_RECORDING.store(true, Ordering::SeqCst);
+    } else {
+        register_shortcuts(&app, &settings.shortcuts)?;
+        SHORTCUT_RECORDING.store(false, Ordering::SeqCst);
+    }
     Ok(())
 }
 
@@ -1110,109 +1241,316 @@ async fn download_update(app: tauri::AppHandle) -> Result<(), String> {
     app.restart();
 }
 
-/// Resolves provider and model itself from settings rather than trusting a
-/// frontend-supplied provider: the AI panel may invoke this before its own
-/// `get_settings` call has resolved, and a missing/undefined argument would
-/// fail Tauri's argument deserialization before this function body ever runs
-/// — leaving `streaming` stuck `true` client-side with no `ai-done`/`ai-error`
-/// event to clear it. Resolving server-side eliminates that case entirely.
-///
-/// `speak` is an explicit argument rather than something the backend infers,
-/// because it is a per-conversation UI toggle. NOTE: adding it changed this
-/// command's signature — `AiPanel.tsx` is the only call site and had to change
-/// in the same commit, or Tauri's argument deserialization fails before this
-/// body runs, which is exactly the stuck-`streaming` failure described above.
+/// A session invalidates pending microphone/transcription/network work when the orb closes.
+#[derive(Default)]
+struct Conversation(std::sync::Mutex<ConversationState>);
+
+#[derive(Default)]
+struct ConversationState {
+    session: u64,
+    active: bool,
+    turn: u64,
+    log_id: String,
+    reply_id: Option<i64>,
+    turns: Vec<(String, String)>,
+    speech: Option<u64>,
+}
+
+impl ConversationState {
+    fn interrupt(&mut self, session: u64, turn: u64) -> Result<Option<u64>, String> {
+        if self.session != session || turn <= self.turn {
+            return Err("Stale conversation turn".into());
+        }
+        self.turn = turn;
+        Ok(self.speech.take())
+    }
+
+    fn renew(&mut self) -> (u64, Option<u64>) {
+        self.session += 1;
+        self.active = true;
+        self.turn = 0;
+        self.log_id = ids::new_id();
+        self.reply_id = None;
+        self.turns.clear();
+        (self.session, self.speech.take())
+    }
+
+    fn cancel(&mut self, session: u64) -> Option<u64> {
+        if self.session != session {
+            return None;
+        }
+        let speech = self.renew().1;
+        self.active = false;
+        speech
+    }
+}
+
+#[cfg(windows)]
+fn allow_ai_microphone(uri: &str, app_origin: &tauri::Url, active: bool) -> bool {
+    active
+        && tauri::Url::parse(uri)
+            .is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.origin() == app_origin.origin())
+}
+
+/// Opening AI is the user's microphone request. Handle only that window's local
+/// microphone permission; Windows privacy controls still apply.
+#[cfg(windows)]
+fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    use webview2_com::{take_pwstr, Microsoft::Web::WebView2::Win32::*, PermissionRequestedEventHandler};
+    use windows_core::Interface;
+    let app = window.app_handle().clone();
+    let origin = if tauri::is_dev() {
+        app.config().build.dev_url.clone()
+    } else {
+        None
+    }
+    .unwrap_or_else(|| tauri::Url::parse("http://tauri.localhost").unwrap());
+    window.with_webview(move |webview| {
+        // SAFETY: Tauri runs this closure and WebView2 callbacks on its UI thread.
+        let result = unsafe {
+            (|| -> windows_core::Result<()> {
+                let core = webview.controller().CoreWebView2()?;
+                core.add_PermissionRequested(
+                    &PermissionRequestedEventHandler::create(Box::new(move |_, args| {
+                        let Some(args) = args else { return Ok(()) };
+                        let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                        args.PermissionKind(&mut kind)?;
+                        if kind != COREWEBVIEW2_PERMISSION_KIND_MICROPHONE {
+                            return Ok(());
+                        }
+                        args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
+                        args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
+                            .SetSavesInProfile(false)?;
+                        let mut uri = windows_core::PWSTR::null();
+                        args.Uri(&mut uri)?;
+                        let uri = take_pwstr(uri);
+                        let active = app.state::<Conversation>().0.lock().is_ok_and(|state| state.active);
+                        if allow_ai_microphone(&uri, &origin, active) {
+                            args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                        }
+                        Ok(())
+                    })),
+                    &mut 0,
+                )
+            })()
+        };
+        if let Err(error) = result {
+            eprintln!("[synapse] AI microphone permission handler failed: {error}");
+        }
+    })
+}
+
+fn ai_session_current(app: &tauri::AppHandle, session: u64) -> bool {
+    app.state::<Conversation>()
+        .0
+        .lock()
+        .is_ok_and(|state| state.session == session)
+}
+
+fn finish_ai_log(app: &tauri::AppHandle, state: &mut ConversationState, status: &str) -> Result<(), String> {
+    if let Some(id) = state.reply_id {
+        let db = storage::open(&storage::app_path(app)?)?;
+        ai_history::finish(&db, id, status)?;
+        state.reply_id = None;
+        let _ = app.emit("ai-history-changed", ());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-fn send_ai_message(app: tauri::AppHandle, prompt: String, speak: bool) {
-    std::thread::spawn(move || {
-        let path = match settings_path(&app) {
-            Ok(path) => path,
-            Err(e) => {
-                let _ = app.emit("ai-error", e);
-                return;
+fn get_ai_history(app: tauri::AppHandle, before: Option<i64>) -> Result<Vec<ai_history::Message>, String> {
+    ai_history::list(&storage::open(&storage::app_path(&app)?)?, before)
+}
+
+#[tauri::command]
+fn get_ai_usage(app: tauri::AppHandle) -> Result<Vec<ai_usage::Usage>, String> {
+    ai_usage::list(&storage::open(&storage::app_path(&app)?)?)
+}
+
+/// Advance the turn before cancelling audio so late network/transcription work cannot restart it.
+#[tauri::command]
+fn interrupt_ai_reply(app: tauri::AppHandle, session: u64, turn: u64) -> Result<(), String> {
+    let conversation = app.state::<Conversation>();
+    let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+    if let Some(generation) = state.interrupt(session, turn)? {
+        stop_speaking(app.clone(), Some(generation));
+    }
+    finish_ai_log(&app, &mut state, "interrupted")
+}
+
+#[tauri::command]
+fn finish_ai_reply(app: tauri::AppHandle, session: u64, turn: u64) -> Result<(), String> {
+    let conversation = app.state::<Conversation>();
+    let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+    if state.session == session && state.turn == turn {
+        finish_ai_log(&app, &mut state, "complete")?;
+        state.speech = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn begin_ai_session(app: tauri::AppHandle) -> Result<u64, String> {
+    let settings = settings::load(&settings_path(&app)?);
+    let provider = ai::Provider::from_str(&settings.ai.provider)?;
+    if settings.ai.hybrid && (!ai::has_api_key(ai::Provider::Openrouter) || !ai::has_api_key(ai::Provider::Openai)) {
+        return Err("Hybrid mode needs your OpenRouter and OpenAI keys in Settings > AI.".into());
+    }
+    if !settings.ai.hybrid && !ai::has_api_key(provider) {
+        return Err("Add your provider's API key in Settings > AI to start a conversation.".into());
+    }
+    ai_voice_paths(&app)?;
+    let (session, previous_speech) = {
+        let conversation = app.state::<Conversation>();
+        let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+        finish_ai_log(&app, &mut state, "interrupted")?;
+        state.renew()
+    };
+    if let Some(generation) = previous_speech {
+        stop_speaking(app.clone(), Some(generation));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_MENU};
+            while ai_session_current(&app, session) {
+                let pressed = |key: u16| unsafe { GetAsyncKeyState(key as i32) as u16 & 0x8000 != 0 };
+                if pressed(VK_CONTROL.0) && pressed(VK_MENU.0) && pressed(VK_ESCAPE.0) {
+                    end_ai_session(app.clone(), session);
+                    let _ = app.emit("ai-emergency-stop", ());
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
             }
-        };
-        let ai_settings = settings::load(&path).ai;
-        let provider = match ai::Provider::from_str(&ai_settings.provider) {
-            Ok(p) => p,
-            Err(e) => {
-                let _ = app.emit("ai-error", e);
-                return;
+        });
+    }
+    Ok(session)
+}
+
+#[tauri::command]
+fn end_ai_session(app: tauri::AppHandle, session: u64) {
+    let speech = app.state::<Conversation>().0.lock().ok().and_then(|mut state| {
+        if state.session == session {
+            if let Err(error) = finish_ai_log(&app, &mut state, "interrupted") {
+                let _ = app.emit("ai-history-error", error);
             }
-        };
-        let model = ai_settings.model_for(provider).to_string();
+        }
+        state.cancel(session)
+    });
+    if let Some(generation) = speech {
+        stop_speaking(app, Some(generation));
+    }
+}
 
-        let history = {
-            let state = app.state::<Conversation>();
-            let mut turns = state.0.lock().expect("conversation lock");
-            turns.push(("user".to_string(), prompt.clone()));
-            trim_conversation(&mut turns);
-            turns.clone()
-        };
-
-        // Decided once, before the first delta: whether the local engine can
-        // stream. Without it the honest fallback is the old behaviour — speak
-        // the whole reply at the end via the OS voice.
-        let stream_audio = speak && tts_setup::is_ready(&app);
-        let voice_paths = if stream_audio { resolve_voice_paths(&app) } else { None };
-        let stream_audio = stream_audio && voice_paths.is_some();
-
+/// Returns after generation completes; audio completion is reported separately by TTS.
+#[tauri::command]
+async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, turn: u64) -> Result<String, String> {
+    if prompt.trim().is_empty() || prompt.chars().count() > 40000 {
+        return Err("Please use a nonempty message under 40,000 characters.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = settings::load(&settings_path(&app)?).ai;
+        let provider = ai::Provider::from_str(&config.provider)?;
+        let paths = ai_voice_paths(&app)?;
+        let db = storage::open(&storage::app_path(&app)?)?;
         let sidecar = app.state::<tts_pocket::TtsSidecar>();
-        let generation = stream_audio.then(|| sidecar.begin_utterance());
-        let mut splitter = sentences::SentenceSplitter::new();
-
-        let mut on_delta = |chunk: &str| {
-            let (Some(generation), Some(paths)) = (generation, voice_paths.as_ref()) else {
-                return;
+        let (history, generation, reply_id) = {
+            let conversation = app.state::<Conversation>();
+            let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+            if state.session != session || state.turn != turn {
+                return Err("Conversation closed".into());
+            }
+            let model = if config.hybrid {
+                "Jev + GPT-4o Mini"
+            } else {
+                config.model_for(provider)
             };
+            ai_history::insert(&db, &state.log_id, "user", &prompt, model)?;
+            let reply_id = ai_history::insert(&db, &state.log_id, "assistant", "", model)?;
+            state.reply_id = Some(reply_id);
+            state.turns.retain(|(_, text)| !text.is_empty());
+            state.turns.push(("user".into(), prompt));
+            trim_conversation(&mut state.turns);
+            let generation = sidecar.begin_utterance();
+            state.speech = Some(generation);
+            let history = state.turns.clone();
+            state.turns.push(("assistant".into(), String::new()));
+            (history, generation, reply_id)
+        };
+        let _ = app.emit_to(
+            AI_LABEL,
+            "ai-speech-requested",
+            serde_json::json!({"session": session, "turn": turn, "generation": generation}),
+        );
+        let _ = app.emit("ai-history-changed", ());
+        let mut splitter = sentences::SentenceSplitter::new();
+        let cancelled = || !ai_session_current(&app, session) || !sidecar.is_active(generation);
+        let mut log_error = None;
+        let mut on_delta = |chunk: &str| {
+            let conversation = app.state::<Conversation>();
+            let Ok(mut state) = conversation.0.lock() else { return };
+            if state.session != session || state.turn != turn || !sidecar.is_active(generation) {
+                return;
+            }
+            if let Some((_, text)) = state.turns.last_mut() {
+                text.push_str(chunk);
+                if let Err(error) = ai_history::update(&db, reply_id, text, "pending") {
+                    log_error = Some(error);
+                    sidecar.stop();
+                    return;
+                }
+            }
             for sentence in splitter.push(chunk) {
                 sidecar.enqueue(paths.job(generation, sentence));
             }
         };
-
-        match ai::stream_chat(&app, provider, &model, &history, &mut on_delta) {
-            Ok(text) => {
-                if let (Some(generation), Some(paths)) = (generation, voice_paths.as_ref()) {
-                    if let Some(tail) = splitter.finish() {
-                        sidecar.enqueue(paths.job(generation, tail));
-                    }
-                    sidecar.end_utterance(generation);
-                } else if speak && !text.trim().is_empty() {
-                    // No local engine: one OS-voice utterance at the end.
-                    speak_text(app.clone(), text.clone());
+        let result = if config.hybrid {
+            hybrid::run(&app, &history, generation, &cancelled).inspect(|text| on_delta(text))
+        } else {
+            ai::stream_chat(
+                &app,
+                provider,
+                config.model_for(provider),
+                &history,
+                &mut on_delta,
+                &cancelled,
+            )
+        };
+        let conversation = app.state::<Conversation>();
+        let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+        if state.session != session || state.turn != turn {
+            return Err("Conversation closed".into());
+        }
+        if let Some(error) = log_error {
+            finish_ai_log(&app, &mut state, "error")?;
+            return Err(format!("Could not save conversation: {error}"));
+        }
+        if !sidecar.is_active(generation) {
+            return Err("Reply interrupted".into());
+        }
+        match result {
+            Ok(text) if !text.trim().is_empty() => {
+                if let Some(tail) = splitter.finish() {
+                    sidecar.enqueue(paths.job(generation, tail));
                 }
-
-                {
-                    let state = app.state::<Conversation>();
-                    let mut turns = state.0.lock().expect("conversation lock");
-                    turns.push(("assistant".to_string(), text.clone()));
-                    trim_conversation(&mut turns);
-                }
-                let _ = app.emit("ai-done", text);
+                sidecar.end_utterance(generation);
+                trim_conversation(&mut state.turns);
+                let _ = app.emit("ai-history-changed", ());
+                Ok(text)
             }
-            Err(e) => {
-                eprintln!("[synapse] AI request failed: {e}");
-                // Drop the unanswered user turn, so a retry doesn't send the
-                // same question twice in the history.
-                {
-                    let state = app.state::<Conversation>();
-                    let mut turns = state.0.lock().expect("conversation lock");
-                    turns.pop();
-                }
-                if generation.is_some() {
-                    sidecar.stop(); // clears the orb's speaking state
-                }
-                let _ = app.emit("ai-error", e);
+            result => {
+                sidecar.stop();
+                finish_ai_log(&app, &mut state, "error")?;
+                Err(result
+                    .err()
+                    .unwrap_or_else(|| "The AI returned an empty answer. Please try again.".into()))
             }
         }
-    });
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
-
-/// The running conversation, owned in Rust so the orb, the AI panel and any
-/// future caller all see the same history. Previously neither side kept any:
-/// every question was independent.
-#[derive(Default)]
-struct Conversation(std::sync::Mutex<Vec<(String, String)>>);
 
 /// Each turn is re-sent in full on every request, so an unbounded history means
 /// a bill that grows without limit. Oldest turns fall off in user/assistant
@@ -1231,8 +1569,8 @@ fn trim_conversation(turns: &mut Vec<(String, String)>) {
 
 #[tauri::command]
 fn clear_conversation(app: tauri::AppHandle) {
-    if let Ok(mut turns) = app.state::<Conversation>().0.lock() {
-        turns.clear();
+    if let Ok(mut state) = app.state::<Conversation>().0.lock() {
+        state.turns.clear();
     }
 }
 
@@ -1277,23 +1615,30 @@ fn resolve_voice_paths(app: &tauri::AppHandle) -> Option<VoicePaths> {
     }
 }
 
-/// Records and returns the transcript directly (no clipboard paste) — the AI
-/// panel's voice-input button feeds this straight into the prompt box rather
-/// than injecting it into whatever window last had focus.
+/// The orb captures echo-cancelled audio continuously, including during replies.
 #[tauri::command]
-fn transcribe_for_ai(app: tauri::AppHandle) -> Result<String, String> {
-    let auto_stop = auto_stop_enabled(&app);
-    let tick_app = app.clone();
-    asr::record_and_transcribe(auto_stop, move |t| {
-        let _ = tick_app.emit(
-            "dictation-tick",
-            DictationTick {
-                level: t.level,
-                elapsed_ms: t.elapsed_ms,
-                heard_speech: t.heard_speech,
-            },
-        );
+async fn transcribe_for_ai(
+    app: tauri::AppHandle,
+    session: u64,
+    turn: u64,
+    samples: Vec<f32>,
+    sample_rate: u32,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let current = || {
+            app.state::<Conversation>()
+                .0
+                .lock()
+                .is_ok_and(|state| state.session == session && state.turn == turn)
+        };
+        if !current() {
+            return Ok(String::new());
+        }
+        let text = asr::transcribe_audio(&samples, sample_rate)?;
+        Ok(if current() { text } else { String::new() })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1309,15 +1654,62 @@ fn check_mic_access() -> Result<(), String> {
 /// load) must never block it, same as the OS-fallback path already did.
 #[tauri::command]
 fn speak_text(app: tauri::AppHandle, text: String) {
+    let generation = app.state::<tts_pocket::TtsSidecar>().begin_utterance();
+    queue_speech(app, text, generation);
+}
+
+fn ai_voice_paths(app: &tauri::AppHandle) -> Result<VoicePaths, String> {
+    if !tts_setup::is_ready(app) {
+        return Err("Download the voice engine in Settings > Voice to use your selected voice.".into());
+    }
+    resolve_voice_paths(app).ok_or_else(|| "Your selected voice could not be loaded. Check Settings > Voice.".into())
+}
+
+#[tauri::command]
+fn speak_ai_greeting(app: tauri::AppHandle, text: String, session: u64, turn: u64) -> Result<(), String> {
+    if text.trim().is_empty() || text.chars().count() > 4000 {
+        return Err("A greeting must contain between 1 and 4,000 characters.".into());
+    }
+    let paths = ai_voice_paths(&app)?;
+    let conversation = app.state::<Conversation>();
+    let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
+    if state.session != session || state.turn != turn {
+        return Err("Conversation closed".into());
+    }
+    let sidecar = app.state::<tts_pocket::TtsSidecar>();
+    let db = storage::open(&storage::app_path(&app)?)?;
+    state.reply_id = Some(ai_history::insert(&db, &state.log_id, "assistant", &text, "Greeting")?);
+    let generation = sidecar.begin_utterance();
+    state.speech = Some(generation);
+    let _ = app.emit_to(
+        AI_LABEL,
+        "ai-speech-requested",
+        serde_json::json!({"session": session, "turn": turn, "generation": generation}),
+    );
+    let _ = app.emit("ai-history-changed", ());
+    for chunk in sentences::split_all(&text) {
+        sidecar.enqueue(paths.job(generation, chunk));
+    }
+    sidecar.end_utterance(generation);
+    Ok(())
+}
+
+fn queue_speech(app: tauri::AppHandle, text: String, generation: u64) {
+    if !app.state::<tts_pocket::TtsSidecar>().is_active(generation) {
+        return;
+    }
+    let _ = app.emit("tts-requested", generation);
     std::thread::spawn(move || {
+        if !app.state::<tts_pocket::TtsSidecar>().is_active(generation) {
+            return;
+        }
         if tts_setup::is_ready(&app) {
             if let Some(paths) = resolve_voice_paths(&app) {
                 let sidecar = app.state::<tts_pocket::TtsSidecar>();
-                let generation = sidecar.begin_utterance();
                 // Chunked even for one-shot text: a long selection would
                 // otherwise be several seconds of silence before anything
                 // plays, and the queue makes it start after the first sentence.
-                let chunks = sentences::split_for_fast_start(&text);
+                let chunks = sentences::split_all(&text);
                 if !chunks.is_empty() {
                     for chunk in chunks {
                         sidecar.enqueue(paths.job(generation, chunk));
@@ -1331,18 +1723,23 @@ fn speak_text(app: tauri::AppHandle, text: String) {
         // OS fallback. Emitted by hand because this path has no audio thread to
         // report from, and without the events the orb would never leave its
         // speaking state on a machine with no local engine installed.
-        let _ = app.emit("tts-started", 0u64);
-        if let Err(e) = tts::speak(&text) {
+        let _ = app.emit("tts-started", generation);
+        if let Err(e) = tts::speak(&text, || app.state::<tts_pocket::TtsSidecar>().is_active(generation)) {
             eprintln!("[synapse] TTS failed: {e}");
             let _ = app.emit("tts-error", e);
         }
-        let _ = app.emit("tts-ended", 0u64);
+        if app.state::<tts_pocket::TtsSidecar>().is_active(generation) {
+            let _ = app.emit("tts-ended", generation);
+        }
     });
 }
 
 /// Barge-in. Cancels whichever engine is actually live.
 #[tauri::command]
-fn stop_speaking(app: tauri::AppHandle) {
+fn stop_speaking(app: tauri::AppHandle, generation: Option<u64>) {
+    if generation.is_some_and(|id| !app.state::<tts_pocket::TtsSidecar>().is_active(id)) {
+        return;
+    }
     app.state::<tts_pocket::TtsSidecar>().stop();
     tts::stop();
 }
@@ -1425,6 +1822,7 @@ pub fn run() {
             save_note_document,
             favorite_note,
             trash_note,
+            trash_note_folder,
             organize_note,
             set_note_color,
             open_note_window,
@@ -1447,17 +1845,25 @@ pub fn run() {
             insert_clipboard_entry,
             set_api_key,
             provider_status,
+            begin_ai_session,
+            interrupt_ai_reply,
+            finish_ai_reply,
+            get_ai_history,
+            get_ai_usage,
+            end_ai_session,
             send_ai_message,
             insert_ai_response,
             transcribe_for_ai,
             check_mic_access,
             speak_text,
+            speak_ai_greeting,
             preview_voice,
             stop_speaking,
             is_speaking,
             clear_conversation,
             get_settings,
             update_settings,
+            set_shortcut_recording,
             open_settings,
             delete_api_key,
             model_status,
@@ -1480,7 +1886,14 @@ pub fn run() {
             // became note #1.
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&dir);
-                if let Err(e) = storage::open(&dir.join("synapse.db")) {
+                if let Err(e) = storage::open(&dir.join("synapse.db")).and_then(|db| {
+                    db.execute(
+                        "UPDATE ai_messages SET status = 'interrupted' WHERE status = 'pending'",
+                        [],
+                    )
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+                }) {
                     eprintln!("[synapse] database initialization failed: {e}");
                 }
                 if let Err(e) = clipboard_history::migrate_snippets(&dir) {
@@ -1630,21 +2043,31 @@ pub fn run() {
                 }
             });
 
-            // Undecorated and transparent: this window is an object you talk
-            // to, and OS title-bar chrome around a glowing orb would read as a
-            // dialog. Its own header carries data-tauri-drag-region instead.
+            // Only the orb is painted; leave room for its movement and soft shadow.
             let ai_panel = WebviewWindowBuilder::new(app, AI_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse - AI")
-                .inner_size(420.0, 620.0)
-                .min_inner_size(340.0, 380.0)
+                .inner_size(AI_ORB_SIZE, AI_ORB_SIZE)
+                .resizable(false)
                 .decorations(false)
+                .shadow(false)
+                .skip_taskbar(true)
                 .transparent(true)
                 .visible(false)
                 .build()?;
             let aip = ai_panel.clone();
+            #[cfg(windows)]
+            configure_ai_microphone(&ai_panel)?;
             ai_panel.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    let session = aip
+                        .app_handle()
+                        .state::<Conversation>()
+                        .0
+                        .lock()
+                        .map(|s| s.session)
+                        .unwrap_or(0);
+                    end_ai_session(aip.app_handle().clone(), session);
                     let _ = aip.hide();
                 }
             });
@@ -1659,6 +2082,14 @@ pub fn run() {
                 .build()?;
             let sw = settings_window.clone();
             settings_window.on_window_event(move |event| {
+                if matches!(
+                    event,
+                    tauri::WindowEvent::Focused(false) | tauri::WindowEvent::CloseRequested { .. }
+                ) {
+                    if let Err(error) = set_shortcut_recording(sw.app_handle().clone(), false) {
+                        eprintln!("[synapse] could not restore shortcuts: {error}");
+                    }
+                }
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = sw.hide();
@@ -1726,36 +2157,16 @@ pub fn run() {
                 }
             });
 
-            let handle = app.handle().clone();
-            app.global_shortcut().on_shortcut(
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Enter),
-                move |_app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        show_overlay_at_cursor(&handle);
-                        let _ = handle.emit("wheel-shown", ());
-                    }
-                },
-            )?;
-
-            // Dedicated direct-dictation hotkey (PRD §4.3): starts Speech-to-Text
-            // without opening the wheel at all, since it's the most-used action.
-            let dictate_handle = app.handle().clone();
-            app.global_shortcut().on_shortcut(
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD),
-                move |_app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        begin_direct_dictation(&dictate_handle);
-                    }
-                },
-            )?;
+            let saved = settings::load(&settings_path(app.handle())?);
+            register_shortcuts(app.handle(), &saved.shortcuts)?;
 
             // Synapse has no main window: every window above starts hidden and is
             // summoned by hotkey, so on an already-onboarded machine launching the
             // app produced no visible feedback at all and read as a dead icon. The
             // tray is the only persistent, clickable proof it's running, and the
             // only way to reach the app or quit it without knowing the hotkeys.
-            let open_item = MenuItem::with_id(app, "open", "Open wheel\tCtrl+Alt+Enter", true, None::<&str>)?;
-            let dictate_item = MenuItem::with_id(app, "dictate", "Start dictation\tCtrl+Alt+D", true, None::<&str>)?;
+            let open_item = MenuItem::with_id(app, "open", "Open wheel", true, None::<&str>)?;
+            let dictate_item = MenuItem::with_id(app, "dictate", "Start dictation", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Synapse", true, None::<&str>)?;
             let tray_menu = Menu::with_items(app, &[&open_item, &dictate_item, &settings_item, &quit_item])?;
@@ -1813,6 +2224,59 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn microphone_permission_is_only_for_the_active_local_orb() {
+        let dev = tauri::Url::parse("http://127.0.0.1:1420/").unwrap();
+        assert!(allow_ai_microphone("http://127.0.0.1:1420/index.html", &dev, true));
+        for uri in [
+            "https://example.com",
+            "http://127.0.0.1:1421/",
+            "http://127.0.0.1:1420.evil.test/",
+            "not a URL",
+            "data:text/html,hi",
+        ] {
+            assert!(!allow_ai_microphone(uri, &dev, true));
+        }
+        assert!(!allow_ai_microphone(dev.as_str(), &dev, false));
+        let bundled = tauri::Url::parse("http://tauri.localhost/").unwrap();
+        assert!(allow_ai_microphone("http://tauri.localhost/index.html", &bundled, true));
+        assert!(!allow_ai_microphone(dev.as_str(), &bundled, true));
+    }
+
+    #[test]
+    fn interruption_preserves_context_and_rejects_late_turns() {
+        let mut state = ConversationState::default();
+        let (session, _) = state.renew();
+        state.turns.push(("assistant".into(), "A partial reply".into()));
+        state.speech = Some(17);
+        assert_eq!(state.interrupt(session, 1).unwrap(), Some(17));
+        assert_eq!(state.turn, 1);
+        assert_eq!(state.turns[0].1, "A partial reply");
+        state.speech = Some(19);
+        assert!(state.interrupt(session, 1).is_err());
+        assert!(state.interrupt(session + 1, 2).is_err());
+        assert_eq!(state.speech, Some(19));
+        assert_eq!(state.interrupt(session, 2).unwrap(), Some(19));
+    }
+
+    #[test]
+    fn closing_an_orb_session_invalidates_work_without_cancelling_a_new_session() {
+        let mut state = ConversationState::default();
+        let (first, _) = state.renew();
+        state.turns.push(("user".into(), "Hello".into()));
+        state.speech = Some(17);
+        assert_eq!(state.cancel(first), Some(17));
+        assert_ne!(state.session, first);
+        assert!(state.turns.is_empty());
+        let (second, _) = state.renew();
+        state.speech = Some(19);
+        assert_eq!(state.cancel(first), None);
+        assert_eq!(state.session, second);
+        assert_eq!(state.speech, Some(19));
+        assert_eq!(state.cancel(second), Some(19));
+    }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("synapse-lib-test-{name}"));

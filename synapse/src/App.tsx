@@ -1,4 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { Settings as SettingsData } from "./models";
 import Wheel from "./Wheel";
 import NotesHub from "./NotesHub";
 import StickyNote from "./StickyNote";
@@ -18,6 +22,18 @@ const NOTE_PREFIX = "note-";
 
 export default function App() {
   const label = getCurrentWindow().label;
+  useEffect(() => {
+    const apply = (settings: SettingsData) => {
+      document.documentElement.dataset.accent = settings.appearance.accent;
+    };
+    const listener = listen<SettingsData>("settings-changed", (event) => apply(event.payload));
+    invoke<SettingsData>("get_settings")
+      .then(apply)
+      .catch(() => {});
+    return () => {
+      void listener.then((stop) => stop());
+    };
+  }, []);
 
   // Sticky notes are created at runtime, one window per note, so their labels
   // carry the note id — the label is the only channel that survives, for the

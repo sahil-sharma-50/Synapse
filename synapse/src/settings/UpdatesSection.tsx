@@ -94,35 +94,40 @@ export default function UpdatesSection() {
     <div className="set-section">
       <div className="set-page-head">
         <h2 className="set-title">Updates</h2>
-        <p className="set-subtitle">Keep Synapse up to date. You choose when to download and install a new version. Installing an update restarts the app.</p>
+        <p className="set-subtitle">
+          Keep Synapse up to date. You choose when to download and install a new version. Installing
+          an update restarts the app.
+        </p>
       </div>
 
-      <div className="set-row">
-        <span className="set-label">Current version</span>
-        <div className="set-key">
-          <span className="set-badge set-ok">v{currentVersion || "…"}</span>
-          {status === "up-to-date" && <span className="set-note">You're up to date</span>}
-          {status === "available" && info && (
-            <span className="set-note">Update available: v{info.latest_version}</span>
-          )}
-        </div>
-      </div>
-
-      {(status === "idle" || status === "up-to-date" || status === "available") && (
-        <div className="set-row">
-          <span className="set-label" />
+      <div className="set-card">
+        <div className="set-card-row">
+          <span className="set-label">Current version</span>
           <div className="set-key">
-            <button className="set-btn set-btn-quiet" onClick={check} disabled={busy}>
-              Check for updates
-            </button>
+            <span className="set-badge set-ok">v{currentVersion || "…"}</span>
+            {status === "up-to-date" && <span className="set-note">You're up to date</span>}
             {status === "available" && info && (
-              <button className="set-btn" onClick={downloadAndInstall} disabled={busy}>
-                Download &amp; Install v{info.latest_version}
-              </button>
+              <span className="set-note">Update available: v{info.latest_version}</span>
             )}
           </div>
         </div>
-      )}
+
+        {(status === "idle" || status === "up-to-date" || status === "available") && (
+          <div className="set-card-row">
+            <span className="set-label" />
+            <div className="set-key">
+              <button className="set-btn set-btn-quiet" onClick={check} disabled={busy}>
+                Check for updates
+              </button>
+              {status === "available" && info && (
+                <button className="set-btn" onClick={downloadAndInstall} disabled={busy}>
+                  Download &amp; Install v{info.latest_version}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {status === "checking" && <p className="set-note">Checking for updates…</p>}
 
@@ -132,10 +137,12 @@ export default function UpdatesSection() {
               sweep animation lives on `.set-meter-idle .set-meter-fill`, so an
               empty track renders as a frozen bar and reads as a hang. */}
           <div className={`set-meter ${known ? "" : "set-meter-idle"}`}>
-          <div
-            className="set-meter-fill"
-            style={known ? { "--meter-progress": percent / 100 } as React.CSSProperties : undefined}
-          />
+            <div
+              className="set-meter-fill"
+              style={
+                known ? ({ "--meter-progress": percent / 100 } as React.CSSProperties) : undefined
+              }
+            />
           </div>
           <div className="set-progress-foot">
             <span>{known ? `${Math.floor(percent)}%` : "Downloading…"}</span>
@@ -146,7 +153,11 @@ export default function UpdatesSection() {
 
       {status === "installing" && <p className="set-note">Installing… Synapse will restart.</p>}
 
-      {error && <div className="set-error" role="alert">{error}</div>}
+      {error && (
+        <div className="set-error" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

@@ -7,15 +7,33 @@ import type { Settings as SettingsData } from "./models";
 import "./Settings.css";
 import WindowChrome from "./WindowChrome";
 import AiSection from "./settings/AiSection";
+import AiHistory from "./settings/AiHistory";
+import AiUsage from "./settings/AiUsage";
 import ClipboardSection from "./settings/ClipboardSection";
-import { ClipboardIcon, RefreshIcon, SparkleIcon, SpeakerIcon } from "./settings/icons";
+import {
+  ChatIcon,
+  ClipboardIcon,
+  ColorPickerIcon,
+  LineChartIcon,
+  RefreshIcon,
+  SparkleIcon,
+  SpeakerIcon,
+} from "./settings/icons";
 import UpdatesSection from "./settings/UpdatesSection";
 import VoiceSection from "./settings/VoiceSection";
+import GeneralSection from "./settings/GeneralSection";
+import AppearanceSection from "./settings/AppearanceSection";
+import { ControlsIcon } from "./settings/icons";
+import { ShortcutKeys } from "./settings/ShortcutRecorder";
 
 const SECTIONS = [
+  { id: "general", label: "Controls", icon: ControlsIcon },
+  { id: "appearance", label: "Wheel & color", icon: ColorPickerIcon },
   { id: "ai", label: "AI", icon: SparkleIcon },
   { id: "voice", label: "Voice", icon: SpeakerIcon },
   { id: "clipboard", label: "Clipboard", icon: ClipboardIcon },
+  { id: "usage", label: "Usage", icon: LineChartIcon },
+  { id: "history", label: "Conversations", icon: ChatIcon },
   { id: "updates", label: "Updates", icon: RefreshIcon },
 ] as const;
 
@@ -23,7 +41,7 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsData | null>(null);
-  const [section, setSection] = useState<SectionId>("ai");
+  const [section, setSection] = useState<SectionId>("general");
   const [error, setError] = useState("");
   const [version, setVersion] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
@@ -124,17 +142,19 @@ export default function Settings() {
           ))}
           <div className="set-sidebar-foot">
             <span>Open wheel</span>
-            <kbd>Ctrl + Alt + Enter</kbd>
+            <ShortcutKeys value={settings.shortcuts.wheel} />
             {version && <span>Synapse {version}</span>}
           </div>
         </nav>
         <main className="set-main" id="settings-content" tabIndex={-1}>
-          <div
-            className={`set-save-status${saveStatus ? " set-save-status-visible" : ""}`}
-            role="status"
-          >
-            {saveStatus}
-          </div>
+          {section !== "history" && (
+            <div className="set-save-status" role="status">
+              {saveStatus ||
+                (section === "general"
+                  ? "Apply shortcut changes below"
+                  : "Preferences save automatically")}
+            </div>
+          )}
           {error && (
             <div className="set-error" role="alert">
               <p>Couldn't save your changes. {error}</p>
@@ -143,9 +163,13 @@ export default function Settings() {
               </button>
             </div>
           )}
+          {section === "general" && <GeneralSection settings={settings} onChange={update} />}
+          {section === "appearance" && <AppearanceSection settings={settings} onChange={update} />}
           {section === "ai" && <AiSection settings={settings} onChange={update} />}
           {section === "voice" && <VoiceSection settings={settings} onChange={update} />}
           {section === "clipboard" && <ClipboardSection settings={settings} onChange={update} />}
+          {section === "history" && <AiHistory />}
+          {section === "usage" && <AiUsage settings={settings} onChange={update} />}
           {section === "updates" && <UpdatesSection />}
         </main>
       </div>

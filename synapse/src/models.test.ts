@@ -8,18 +8,23 @@ import {
   type Settings,
 } from "./models";
 
-const PROVIDERS: Provider[] = ["anthropic", "openai"];
+const PROVIDERS: Provider[] = ["anthropic", "openai", "openrouter"];
 
 function settings(overrides: Partial<Settings["ai"]> = {}): Settings {
   return {
     ai: {
+      custom_greetings: "",
+      speak_replies: true,
+      typing_mode: false,
+      enter_to_send: true,
       provider: "anthropic",
       anthropic_model: "claude-opus-5",
       openai_model: "gpt-4o-mini",
+      openrouter_model: "openrouter/auto",
       ...overrides,
     },
     tts: { voice: "alba" },
-    voice: { auto_stop_on_silence: false },
+    voice: { auto_stop_on_silence: false, silence_ms: 900, speech_threshold: 0.015 },
     clipboard: {
       history_enabled: true,
       capture_text: true,
@@ -30,6 +35,8 @@ function settings(overrides: Partial<Settings["ai"]> = {}): Settings {
       max_unpinned_items: 500,
       max_storage_mb: 250,
     },
+    shortcuts: { wheel: "Control+Alt+Enter", dictation: "Control+Alt+D", tools: {} },
+    appearance: { wheel_size: 100, accent: "neutral", wheel_tools: ["stt", "settings"] },
     onboarding_complete: true,
   };
 }
@@ -57,11 +64,16 @@ describe("modelFor", () => {
     const s = settings({ provider: "anthropic" });
     expect(modelFor(s, "anthropic")).toBe("claude-opus-5");
     expect(modelFor(s, "openai")).toBe("gpt-4o-mini");
+    expect(modelFor(s, "openrouter")).toBe("openrouter/auto");
   });
 
   it("returns a custom model that is not in the catalogue", () => {
-    const s = settings({ anthropic_model: "claude-something-unreleased" });
+    const s = settings({
+      anthropic_model: "claude-something-unreleased",
+      openrouter_model: "provider/custom-model",
+    });
     expect(modelFor(s, "anthropic")).toBe("claude-something-unreleased");
+    expect(modelFor(s, "openrouter")).toBe("provider/custom-model");
   });
 });
 

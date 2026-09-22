@@ -1,6 +1,6 @@
 [package]
 name = "synapse"
-version = "0.2.1"
+version = "0.2.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -31,6 +31,8 @@ parakeet-rs = "0.3"
 cpal = "0.17"
 enigo = "0.6"
 xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 chrono = "0.4"
 dirs = "6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
@@ -55,6 +57,9 @@ tauri-plugin-updater = "2"
 mockito = "1"
 
 [target.'cfg(windows)'.dependencies]
+# Use the same COM bindings already used by Tauri's WebView2 backend.
+webview2-com = "0.38.2"
+windows-core = "0.61.2"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
@@ -64,6 +69,9 @@ windows = { version = "0.62", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     # GetClipboardSequenceNumber, for the clipboard-history watcher.
     "Win32_System_DataExchange",
+    "Win32_System_Com",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Shell",
 ] }
 keyring = { version = "3", features = ["windows-native"] }
 clipboard-win = "5.4.1"
@@ -71,4 +79,3 @@ clipboard-win = "5.4.1"
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }
 keyring = { version = "3", features = ["apple-native"] }
-

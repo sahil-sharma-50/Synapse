@@ -56,6 +56,18 @@ pub fn initialize(connection: &Connection) -> Result<(), String> {
                PRIMARY KEY(item_id, ordinal)
              );
              CREATE INDEX IF NOT EXISTS notes_updated_idx ON notes(updated_at DESC);
+             CREATE TABLE IF NOT EXISTS ai_messages (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               conversation TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
+               model TEXT NOT NULL, created_at INTEGER NOT NULL, status TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS ai_usage (
+               id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
+               day TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+               input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+               cost REAL NOT NULL, status TEXT NOT NULL, request_id TEXT
+             );
+             CREATE INDEX IF NOT EXISTS ai_usage_day ON ai_usage(day);
              CREATE INDEX IF NOT EXISTS clipboard_copied_idx ON clipboard_items(copied_at DESC);",
         )
         .map_err(|error| error.to_string())

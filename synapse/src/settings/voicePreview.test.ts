@@ -3,9 +3,18 @@ import type { Settings } from "../models";
 import { chooseAndPreviewVoice, isCurrentPreview } from "./voicePreview";
 
 const settings: Settings = {
-  ai: { provider: "openai", anthropic_model: "claude-sonnet-5", openai_model: "gpt-4o" },
+  ai: {
+    custom_greetings: "",
+    speak_replies: true,
+    typing_mode: false,
+    enter_to_send: true,
+    provider: "openai",
+    anthropic_model: "claude-sonnet-5",
+    openai_model: "gpt-4o",
+    openrouter_model: "openrouter/auto",
+  },
   tts: { voice: "alba" },
-  voice: { auto_stop_on_silence: false },
+  voice: { auto_stop_on_silence: false, silence_ms: 900, speech_threshold: 0.015 },
   clipboard: {
     history_enabled: true,
     capture_text: true,
@@ -16,6 +25,8 @@ const settings: Settings = {
     max_unpinned_items: 500,
     max_storage_mb: 250,
   },
+  shortcuts: { wheel: "Control+Alt+Enter", dictation: "Control+Alt+D", tools: {} },
+  appearance: { wheel_size: 100, accent: "neutral", wheel_tools: ["stt", "settings"] },
   onboarding_complete: true,
 };
 

@@ -82,7 +82,7 @@ enum PlaybackCommand {
     /// this, `tts-ended` fires.
     EndOfUtterance { generation: u64 },
     /// Barge-in or shutdown.
-    Stop,
+    Stop { generation: u64 },
 }
 
 /// Everything the audio thread owns. All of it stays local to that one thread —
@@ -192,46 +192,9 @@ impl Default for TtsSidecar {
                     }
                 };
 
-                match cmd {
-                    Some(PlaybackCommand::Stop) => {
-                        if let Some(sink) = st.sink.take() {
-                            // Not `clear()` — that calls sleep_until_end()
-                            // internally and can stall.
-                            sink.stop();
-                        }
-                        finish_utterance(&mut st, &audio_app);
-                    }
-                    Some(PlaybackCommand::Enqueue { generation, path }) => {
-                        if generation < st.generation {
-                            let _ = std::fs::remove_file(&path); // superseded
-                            continue;
-                        }
-                        if generation > st.generation {
-                            // A new utterance began without a Stop.
-                            st.generation = generation;
-                            st.end_signalled = false;
-                        }
-                        if let Err(e) = enqueue_clip(&mut st, &path) {
-                            eprintln!("[synapse] tts playback failed: {e}");
-                            let _ = std::fs::remove_file(&path);
-                            continue;
-                        }
-                        st.temp_paths.push(path);
-                        if !st.speaking {
-                            st.speaking = true;
-                            // Emitted when audio is genuinely audible, not
-                            // merely requested.
-                            emit_u64(&audio_app, "tts-started", generation);
-                        }
-                    }
-                    Some(PlaybackCommand::EndOfUtterance { generation }) if generation >= st.generation => {
-                        println!("[synapse] tts audio end marker generation={generation}");
-                        st.end_signalled = true;
-                    }
-                    // An End for an utterance we have already moved past.
-                    Some(PlaybackCommand::EndOfUtterance { .. }) => {}
-                    None => {}
-                }
+                handle_playback_command(&mut st, cmd, &|event, generation| {
+                    emit_u64(&audio_app, event, generation)
+                });
 
                 // `sink.empty()` is also true in the gap between one sentence
                 // finishing and the next finishing synthesis, so the drain
@@ -239,7 +202,7 @@ impl Default for TtsSidecar {
                 // the worker sends End after the last clip, so the marker can
                 // never overtake the audio ahead of it.
                 if st.speaking && st.end_signalled && st.sink.as_ref().is_none_or(|s| s.empty()) {
-                    finish_utterance(&mut st, &audio_app);
+                    finish_utterance(&mut st, &|event, generation| emit_u64(&audio_app, event, generation));
                 }
             }
         });
@@ -256,6 +219,55 @@ impl Default for TtsSidecar {
     }
 }
 
+fn handle_playback_command(st: &mut AudioState, cmd: Option<PlaybackCommand>, emit: &impl Fn(&str, u64)) {
+    match cmd {
+        Some(PlaybackCommand::Stop { generation }) => {
+            if generation < st.generation {
+                return;
+            }
+            if let Some(sink) = st.sink.take() {
+                // Not `clear()` — that calls sleep_until_end()
+                // internally and can stall.
+                sink.stop();
+            }
+            finish_utterance(st, emit);
+            st.generation = generation;
+        }
+        Some(PlaybackCommand::Enqueue { generation, path }) => {
+            if generation < st.generation {
+                let _ = std::fs::remove_file(&path); // superseded
+                return;
+            }
+            if generation > st.generation {
+                if let Some(sink) = st.sink.take() {
+                    sink.stop();
+                }
+                finish_utterance(st, emit);
+                st.generation = generation;
+            }
+            if let Err(e) = enqueue_clip(st, &path) {
+                eprintln!("[synapse] tts playback failed: {e}");
+                emit("tts-playback-error", generation);
+                let _ = std::fs::remove_file(&path);
+                return;
+            }
+            st.temp_paths.push(path);
+            if !st.speaking {
+                st.speaking = true;
+                // Playback is queued, including the brief device lead-in.
+                emit("tts-started", generation);
+            }
+        }
+        Some(PlaybackCommand::EndOfUtterance { generation }) if generation == st.generation => {
+            println!("[synapse] tts audio end marker generation={generation}");
+            st.end_signalled = true;
+        }
+        // An End for an utterance we have already moved past.
+        Some(PlaybackCommand::EndOfUtterance { .. }) => {}
+        None => {}
+    }
+}
+
 fn enqueue_clip(st: &mut AudioState, path: &std::path::Path) -> Result<(), String> {
     if st.stream.is_none() {
         st.stream = Some(rodio::OutputStream::try_default().map_err(|e| e.to_string())?);
@@ -269,13 +281,20 @@ fn enqueue_clip(st: &mut AudioState, path: &std::path::Path) -> Result<(), Strin
     }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let source = rodio::Decoder::new(std::io::BufReader::new(file)).map_err(|e| e.to_string())?;
-    st.sink.as_ref().expect("just created").append(source);
+    append_clip(st.sink.as_ref().expect("just created"), source, !st.speaking);
     Ok(())
+}
+
+fn append_clip(sink: &rodio::Sink, source: impl rodio::Source<Item = i16> + Send + 'static, first_clip: bool) {
+    // Let the output device settle before consuming the first phoneme. Delay
+    // adds silence without trimming/fading speech; later streaming chunks stay gapless.
+    let lead_in = std::time::Duration::from_millis(if first_clip { 160 } else { 0 });
+    sink.append(source.delay(lead_in));
 }
 
 /// Emits `tts-ended` exactly once per `tts-started` and cleans up the temp
 /// WAVs, which are only safe to unlink now that nothing is decoding them.
-fn finish_utterance(st: &mut AudioState, app: &AppSlot) {
+fn finish_utterance(st: &mut AudioState, emit: &impl Fn(&str, u64)) {
     println!("[synapse] tts finished generation={}", st.generation);
     for path in st.temp_paths.drain(..) {
         let _ = std::fs::remove_file(path);
@@ -283,7 +302,7 @@ fn finish_utterance(st: &mut AudioState, app: &AppSlot) {
     st.end_signalled = false;
     if st.speaking {
         st.speaking = false;
-        emit_u64(app, "tts-ended", st.generation);
+        emit("tts-ended", st.generation);
     }
 }
 
@@ -328,10 +347,14 @@ impl TtsSidecar {
                         }
                         let started = std::time::Instant::now();
                         match sidecar.synthesize(&job, |path| {
-                            let _ = audio_tx.send(PlaybackCommand::Enqueue {
-                                generation: job.generation,
-                                path,
-                            });
+                            if sidecar.is_active(job.generation) {
+                                let _ = audio_tx.send(PlaybackCommand::Enqueue {
+                                    generation: job.generation,
+                                    path,
+                                });
+                            } else {
+                                let _ = std::fs::remove_file(path);
+                            }
                         }) {
                             Ok(()) => {
                                 println!(
@@ -341,6 +364,9 @@ impl TtsSidecar {
                                 );
                             }
                             Err(e) => {
+                                if !sidecar.is_active(job.generation) {
+                                    continue;
+                                }
                                 eprintln!("[synapse] tts synthesis failed: {e}");
                                 use tauri::Emitter;
                                 let _ = app.emit(
@@ -367,7 +393,13 @@ impl TtsSidecar {
     /// Starts a new utterance, invalidating anything still queued from the
     /// previous one.
     pub fn begin_utterance(&self) -> u64 {
-        self.generation.fetch_add(1, Ordering::SeqCst) + 1
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let _ = self.audio_tx.send(PlaybackCommand::Stop { generation });
+        generation
+    }
+
+    pub fn is_active(&self, generation: u64) -> bool {
+        is_current(generation, self.generation.load(Ordering::SeqCst))
     }
 
     pub fn enqueue(&self, job: SynthJob) {
@@ -386,8 +418,8 @@ impl TtsSidecar {
     /// and make the next utterance pay a multi-second reload, to save one
     /// synthesis that gets discarded anyway.
     pub fn stop(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        let _ = self.audio_tx.send(PlaybackCommand::Stop);
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let _ = self.audio_tx.send(PlaybackCommand::Stop { generation });
     }
 
     /// Best-effort kill of the cached sidecar process, if one is running.
@@ -577,6 +609,76 @@ impl TtsSidecar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_word_survives_output_startup_without_gaps_between_chunks() {
+        let (sink, mut output) = rodio::Sink::new_idle();
+        let rate = 24_000;
+        let first_word = vec![12_000i16; 2400];
+        append_clip(
+            &sink,
+            rodio::buffer::SamplesBuffer::new(1, rate, first_word.clone()),
+            true,
+        );
+        append_clip(
+            &sink,
+            rodio::buffer::SamplesBuffer::new(1, rate, vec![6000i16; 2400]),
+            false,
+        );
+        let lead_samples = rate as usize * 160 / 1000;
+        let leading: Vec<_> = output.by_ref().take(lead_samples).collect();
+        assert!(
+            leading.iter().all(|sample| *sample == 0.0),
+            "the output startup window must contain silence, not the first word"
+        );
+        let spoken: Vec<_> = output.take(4800).collect();
+        assert!(
+            spoken[..2400]
+                .iter()
+                .all(|sample| (*sample - 12000.0 / 32768.0).abs() < 0.0001),
+            "preserve every first-word sample"
+        );
+        assert!(
+            spoken[2400..]
+                .iter()
+                .all(|sample| (*sample - 6000.0 / 32768.0).abs() < 0.0001),
+            "later chunks must follow without another lead-in"
+        );
+    }
+
+    #[test]
+    fn stop_then_restart_rejects_late_audio_completion() {
+        let app = |_: &str, _: u64| {};
+        let mut st = AudioState {
+            stream: None,
+            sink: None,
+            speaking: true,
+            end_signalled: false,
+            generation: 1,
+            temp_paths: vec![],
+        };
+        handle_playback_command(&mut st, Some(PlaybackCommand::Stop { generation: 2 }), &app);
+        handle_playback_command(&mut st, Some(PlaybackCommand::EndOfUtterance { generation: 1 }), &app);
+        assert!(
+            !st.end_signalled,
+            "cancelled synthesis must not complete a restarted utterance"
+        );
+        handle_playback_command(
+            &mut st,
+            Some(PlaybackCommand::Enqueue {
+                generation: 1,
+                path: std::path::PathBuf::from("cancelled-test.wav"),
+            }),
+            &app,
+        );
+        assert!(!st.speaking);
+        assert_eq!(st.generation, 2, "stop must advance the audio cancellation boundary");
+        handle_playback_command(&mut st, Some(PlaybackCommand::Stop { generation: 3 }), &app);
+        handle_playback_command(&mut st, Some(PlaybackCommand::EndOfUtterance { generation: 1 }), &app);
+        assert!(!st.end_signalled);
+        handle_playback_command(&mut st, Some(PlaybackCommand::EndOfUtterance { generation: 3 }), &app);
+        assert!(st.end_signalled, "the new utterance can finish normally");
+    }
 
     #[test]
     fn encodes_request_as_single_line_json() {

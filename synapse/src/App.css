@@ -53,8 +53,8 @@ body,
 /* ---- Wedges ---- */
 
 .wedge-slice {
-  fill: rgba(24, 24, 26, 0.96);
-  stroke: rgba(255, 255, 255, 0.06);
+  fill: var(--sy-wheel-surface);
+  stroke: var(--sy-border);
   stroke-width: 0.75;
   transition: fill var(--sy-dur-fast) var(--sy-ease-out);
 }
@@ -65,7 +65,7 @@ body,
 
 .wedge:hover .wedge-slice,
 .wedge-hovered .wedge-slice {
-  fill: var(--sy-border-strong);
+  fill: color-mix(in srgb, var(--sy-accent) 16%, var(--sy-sunken));
 }
 
 .wedge:focus-visible .wedge-slice {
@@ -74,14 +74,14 @@ body,
 }
 
 .wedge-icon path {
-  fill: rgba(235, 235, 240, 0.8);
+  fill: var(--sy-accent);
   transition: fill var(--sy-dur-fast) var(--sy-ease-out);
   pointer-events: none;
 }
 
 .wedge:hover .wedge-icon path,
 .wedge-hovered .wedge-icon path {
-  fill: var(--sy-text);
+  fill: var(--sy-accent);
 }
 
 .wedge-danger:hover .wedge-slice,
@@ -222,6 +222,12 @@ body,
 /* The screenshot toast names a file path, so it gets a wider measure and a
    monospace-ish treatment for the filename line. */
 .status-path {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: calc(var(--sy-9) * 3);
+  margin-inline: auto;
   font-size: var(--sy-fs-micro);
   color: var(--sy-text-dim);
   line-height: 1.4;
@@ -229,6 +235,7 @@ body,
 }
 
 .status-action {
+  display: block;
   margin-top: var(--sy-1);
   font-size: 9px;
   text-transform: uppercase;

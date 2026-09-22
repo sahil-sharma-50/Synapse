@@ -14,9 +14,11 @@ import sys
 import wave
 from pathlib import Path
 
+import torch
 from pocket_tts import TTSModel
 
-_model = TTSModel.load_model()
+# Match the engine's tuned English default (pocket-tts 2.1 still defaults to 0.7).
+_model = TTSModel.load_model(temp=0.3)
 _voice_states = {}
 for _voice in ("alba", "giovanni", "lola", "juergen", "rafael", "estelle"):
     try:
@@ -47,8 +49,11 @@ def handle(request: dict) -> dict:
         if voice_state is None:
             voice_state = _model.get_state_for_audio_prompt(voice)
             _voice_states[voice] = voice_state
+        # This worker is serial. Reset sampling so earlier requests/voice previews
+        # cannot alter the delivery of the selected voice on the next sentence.
+        torch.manual_seed(0)
         audio_chunks = _model.generate_audio_stream(
-            model_state=voice_state, text_to_generate=text
+            model_state=voice_state, text_to_generate=text, copy_state=True
         )
         for index, audio_chunk in enumerate(audio_chunks):
             chunk_path = _write_audio_chunk(out_path, index, audio_chunk)

@@ -84,11 +84,12 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
       <div className="set-page-head">
         <h2 className="set-title">Voice</h2>
         <p className="set-subtitle">
-          Dictation and spoken replies both run on your machine. Nothing you say leaves it.
+          Speech recognition and spoken replies run locally. Messages sent to AI use your chosen
+          provider.
         </p>
       </div>
 
-      <div className="set-card-title">Speech-to-Text</div>
+      <h3 className="set-card-title">Speech-to-Text</h3>
       <div className="set-card">
         <div className="set-card-row">
           <span className="set-row-icon">
@@ -167,10 +168,56 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
             />
           </div>
         </label>
+        <label className="set-card-row">
+          <span className="set-label-stack">
+            <span className="set-label">Pause before stopping</span>
+            <span className="set-sublabel">Longer pauses give you more time to think</span>
+          </span>
+          <select
+            className="set-input set-input-compact"
+            value={settings.voice.silence_ms}
+            disabled={!settings.voice.auto_stop_on_silence}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                voice: { ...settings.voice, silence_ms: Number(event.target.value) },
+              })
+            }
+          >
+            <option value={500}>0.5 seconds</option>
+            <option value={900}>0.9 seconds (default)</option>
+            <option value={1500}>1.5 seconds</option>
+            <option value={2000}>2 seconds</option>
+            <option value={3000}>3 seconds</option>
+          </select>
+        </label>
+        <label className="set-card-row">
+          <span className="set-label-stack">
+            <span className="set-label">Speech detection</span>
+            <span className="set-sublabel">
+              Choose what counts as speech above background noise
+            </span>
+          </span>
+          <select
+            className="set-input set-input-compact"
+            value={settings.voice.speech_threshold}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                voice: { ...settings.voice, speech_threshold: Number(event.target.value) },
+              })
+            }
+          >
+            <option value={0.005}>Sensitive · quiet voice</option>
+            <option value={0.015}>Balanced (default)</option>
+            <option value={0.03}>Less sensitive · noisy room</option>
+            <option value={0.05}>Least sensitive</option>
+          </select>
+        </label>
       </div>
       <p className="set-hint">Required for dictation and for talking to the AI by voice.</p>
 
-      <div className="set-card-title">Text-to-Speech</div>
+      <h3 className="set-card-title">Text-to-Speech</h3>
       <div className="set-card">
         <div className="set-card-row">
           <span className="set-row-icon">
@@ -233,14 +280,13 @@ export default function VoiceSection({ settings, onChange }: VoiceSectionProps) 
               <span className="set-sublabel">Install the engine above to choose a voice</span>
             )}
           </span>
-          <div className="set-voice-grid" role="radiogroup" aria-label="Voice">
+          <div className="set-voice-grid" role="group" aria-label="Choose and preview a voice">
             {TTS_VOICES.map((voice) => (
               <button
                 key={voice}
                 type="button"
                 className={`set-voice-option${previewingVoice === voice ? " set-voice-option-playing" : ""}`}
-                role="radio"
-                aria-checked={voice === settings.tts.voice}
+                aria-pressed={voice === settings.tts.voice}
                 disabled={!tts.ready}
                 onClick={() => selectVoice(voice)}
               >
