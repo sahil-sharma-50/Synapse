@@ -414,7 +414,9 @@ mod platform {
             let raw = &session.out;
             let names = if raw.contains(&0) {
                 String::from_utf16_lossy(
-                    &raw.chunks_exact(2)
+                    &raw.as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|c| u16::from_le_bytes([c[0], c[1]]))
                         .collect::<Vec<_>>(),
                 )
