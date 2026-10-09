@@ -31,4 +31,4 @@ The workflow sets `SITE_MODE=production` and `SITE_URL=https://sahil-sharma-50.g
 
 Preview builds stay noindex. If historical alternatives exist in the local checkout, preview builds include them under `/designs/`; they are excluded from the published source and artifact. The approved page is `src/index.html`; shared styles, scrolling behavior, and wheel guide live in `src/styles.css`, `src/site.js`, and `src/product-tour.*`. Supporting pages share its header, footer, fonts, and palette through the build.
 
-The site has no signup, checkout, account, analytics, or desktop integration. Download buttons open the official GitHub release. Paid licensing details remain an FAQ, with no invented price or launch date. Asset provenance is recorded in `src/assets/README.md`.
+The site has no signup, checkout, account, analytics, or desktop integration. Download buttons open the official GitHub release. Paid licensing details remain an FAQ, with no invented price or launch date. Published asset provenance is recorded in `src/assets/PROVENANCE.md`.
