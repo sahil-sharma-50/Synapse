@@ -1,7 +1,7 @@
 # Desktop assistant: commands, files, and current-app context
 
-Status: proposed design for review. The user approved the milestone direction and
-context captured on invocation. Implementation has not started.
+Status: approved by the user on 2026-10-09. Context is captured on invocation.
+Implementation has not started.
 
 ## Intended outcome
 
