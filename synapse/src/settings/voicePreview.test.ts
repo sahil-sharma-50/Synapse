@@ -7,6 +7,8 @@ const settings: Settings = {
     custom_greetings: "",
     speak_replies: true,
     typing_mode: false,
+    voice_address_required: true,
+    voice_prefix: "Synapse",
     enter_to_send: true,
     provider: "openai",
     anthropic_model: "claude-sonnet-5",

@@ -31,6 +31,8 @@ pub struct Settings {
 pub struct AiSettings {
     #[serde(default = "default_true")]
     pub hybrid: bool,
+    #[serde(default)]
+    pub browser_control: bool,
     #[serde(default = "default_daily_budget")]
     pub daily_budget: f64,
     #[serde(default)]
@@ -48,11 +50,18 @@ pub struct AiSettings {
     #[serde(default)]
     pub typing_mode: bool,
     #[serde(default = "default_true")]
+    pub voice_address_required: bool,
+    #[serde(default = "default_voice_prefix")]
+    pub voice_prefix: String,
+    #[serde(default = "default_true")]
     pub enter_to_send: bool,
 }
 
 fn default_provider() -> String {
     "anthropic".to_string()
+}
+fn default_voice_prefix() -> String {
+    "Synapse".into()
 }
 
 fn default_daily_budget() -> f64 {
@@ -76,6 +85,7 @@ impl Default for AiSettings {
         Self {
             custom_greetings: String::new(),
             hybrid: true,
+            browser_control: false,
             daily_budget: default_daily_budget(),
             provider: default_provider(),
             anthropic_model: default_anthropic_model(),
@@ -83,6 +93,8 @@ impl Default for AiSettings {
             openrouter_model: default_openrouter_model(),
             speak_replies: true,
             typing_mode: false,
+            voice_address_required: true,
+            voice_prefix: default_voice_prefix(),
             enter_to_send: true,
         }
     }
@@ -349,6 +361,10 @@ pub fn load(path: &Path) -> Settings {
 /// the one place that owns settings loading, rather than relying on every
 /// consumer to defend against it.
 fn normalize(settings: &mut Settings) {
+    settings.ai.voice_prefix = settings.ai.voice_prefix.trim().to_owned();
+    if settings.ai.voice_prefix.is_empty() || settings.ai.voice_prefix.chars().count() > 64 {
+        settings.ai.voice_prefix = default_voice_prefix();
+    }
     if !settings.appearance.valid() {
         settings.appearance = AppearanceSettings::default();
     }
@@ -363,6 +379,9 @@ fn normalize(settings: &mut Settings) {
 }
 
 pub fn save(path: &Path, settings: &Settings) -> Result<(), String> {
+    if settings.ai.voice_prefix.chars().count() > 64 {
+        return Err("Keep the voice command prefix within 64 characters.".into());
+    }
     if !settings.ai.daily_budget.is_finite() || !(0.01..=100.0).contains(&settings.ai.daily_budget) {
         return Err("Daily AI budget must be between $0.01 and $100.".into());
     }
@@ -475,6 +494,8 @@ mod tests {
         assert!(settings.ai.speak_replies);
         assert!(settings.ai.enter_to_send);
         assert!(!settings.ai.typing_mode);
+        assert!(settings.ai.voice_address_required);
+        assert_eq!(settings.ai.voice_prefix, "Synapse");
         assert_eq!(settings.voice.silence_ms, 900);
         assert_eq!(settings.voice.speech_threshold, 0.015);
         assert!(settings.shortcuts.parsed().is_ok());
@@ -483,6 +504,8 @@ mod tests {
         settings.voice.speech_threshold = 0.03;
         settings.ai.speak_replies = false;
         settings.ai.typing_mode = true;
+        settings.ai.voice_address_required = false;
+        settings.ai.voice_prefix = "Jarvis".into();
         settings.ai.enter_to_send = false;
         save(&path, &settings).unwrap();
         let restored = load(&path);
@@ -491,6 +514,8 @@ mod tests {
         assert_eq!(restored.voice.speech_threshold, 0.03);
         assert!(!restored.ai.speak_replies);
         assert!(restored.ai.typing_mode);
+        assert!(!restored.ai.voice_address_required);
+        assert_eq!(restored.ai.voice_prefix, "Jarvis");
         assert!(!restored.ai.enter_to_send);
         settings.shortcuts.dictation = "Ctrl+Shift+Space".into();
         assert!(

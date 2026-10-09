@@ -54,6 +54,8 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm run test
+      - name: Chrome companion tests
+        run: node --test ../chrome-extension/test/*.test.mjs
       # Vite catches what tsc does not: unresolvable imports, and broken
       # `@import` chains in the stylesheets that all hang off theme.css.
       - name: Build
@@ -79,6 +81,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Unit tests
         run: cargo test --lib
+      - name: Native browser host tests
+        run: cargo test --bin synapse-browser-host
 
   # Prettier is still a ratchet, not a wall: the frontend predates it, so only
   # the files a PR actually touches have to come out clean — run

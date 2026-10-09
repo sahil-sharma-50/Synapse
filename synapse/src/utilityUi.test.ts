@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error Node's types are not part of the browser app tsconfig.
 import { readFileSync } from "node:fs";
 import clipboardSource from "./Clipboard.tsx?raw";
 import notesSource from "./NotesHub.tsx?raw";

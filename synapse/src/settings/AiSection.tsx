@@ -24,6 +24,18 @@ export default function AiSection({
   const [showKey, setShowKey] = useState(false);
   const [keyBusy, setKeyBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [browser, setBrowser] = useState({ connected: false, error: "" });
+
+  useEffect(() => {
+    const refresh = () => {
+      void invoke<typeof browser>("browser_status")
+        .then(setBrowser)
+        .catch((error) => setBrowser({ connected: false, error: String(error) }));
+    };
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => clearInterval(timer);
+  }, []);
 
   const provider = settings.ai.provider;
   const model = modelFor(settings, provider);
@@ -217,6 +229,87 @@ export default function AiSection({
       </p>
 
       <h3 className="set-card-title">Connections &amp; chat model</h3>
+      <p className="set-hint">
+        When you ask for a desktop task, Synapse reads the current app and relevant visible or
+        selected content. Your configured AI providers may receive that context and matching file
+        names. Synapse does not keep a background activity timeline.
+      </p>
+      <div className="set-card">
+        <label className="set-card-row">
+          <span className="set-label-stack">
+            <span className="set-label">Chrome control</span>
+            <span className="set-sublabel" role="status">
+              {!(settings.ai.browser_control ?? false)
+                ? "Chrome control off"
+                : browser.connected
+                  ? "Companion connected"
+                  : browser.error === "Chrome control disabled"
+                    ? "Waiting for Chrome companion"
+                    : browser.error || "Waiting for Chrome companion"}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.ai.browser_control ?? false}
+            disabled={!(settings.ai.hybrid ?? true)}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                ai: { ...settings.ai, browser_control: event.target.checked },
+              })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Start AI with typing</span>
+          <input
+            type="checkbox"
+            checked={settings.ai.typing_mode}
+            onChange={(event) =>
+              onChange({ ...settings, ai: { ...settings.ai, typing_mode: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Require a prefix before voice commands</span>
+          <input
+            type="checkbox"
+            checked={settings.ai.voice_address_required}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                ai: { ...settings.ai, voice_address_required: event.target.checked },
+              })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Voice command prefix</span>
+          <span className="set-control">
+            <input
+              className="set-input"
+              type="text"
+              value={settings.ai.voice_prefix ?? "Synapse"}
+              maxLength={64}
+              placeholder="Synapse"
+              aria-describedby="voice-prefix-help"
+              onChange={(event) =>
+                onChange({ ...settings, ai: { ...settings.ai, voice_prefix: event.target.value } })
+              }
+            />
+          </span>
+        </label>
+      </div>
+      <p className="set-hint" id="voice-prefix-help">
+        Choose a word or phrase, such as “Jarvis” or “Hey assistant”. Blank uses “Synapse”. Changes
+        apply to the next voice command.
+      </p>
+      <p className="set-hint">
+        Load the local Chrome companion and register its native host once. Browser tasks share
+        relevant task-page text with your AI providers; passwords, payment fields and unrelated
+        pages are excluded. Form submissions and consequential actions require review. Chrome shows
+        a debugging indicator while a task runs. The extension popup provides Stop and Reconnect.
+      </p>
       <div className="set-card">
         <label className="set-card-row">
           <span className="set-row-icon">

@@ -52,7 +52,11 @@ const CASES = [
     guard: "./window-labels.mjs",
     what: "a window label dropped from the capability file",
     break: (edit) =>
-      edit("synapse/src-tauri/capabilities/default.json", (s) => s.replace('"clipboard", ', "")),
+      edit("synapse/src-tauri/capabilities/default.json", (s) => {
+        const capability = JSON.parse(s);
+        capability.windows = capability.windows.filter((label) => label !== "clipboard");
+        return JSON.stringify(capability, null, 2);
+      }),
   },
   {
     guard: "./window-labels.mjs",

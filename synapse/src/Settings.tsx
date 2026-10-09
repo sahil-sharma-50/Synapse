@@ -165,7 +165,17 @@ export default function Settings() {
           )}
           {section === "general" && <GeneralSection settings={settings} onChange={update} />}
           {section === "appearance" && <AppearanceSection settings={settings} onChange={update} />}
-          {section === "ai" && <AiSection settings={settings} onChange={update} />}
+          {section === "ai" && (
+            <>
+              <button
+                className="set-btn"
+                onClick={() => invoke("show_workflows").catch((cause) => setError(String(cause)))}
+              >
+                Teach Synapse · Workflows
+              </button>
+              <AiSection settings={settings} onChange={update} />
+            </>
+          )}
           {section === "voice" && <VoiceSection settings={settings} onChange={update} />}
           {section === "clipboard" && <ClipboardSection settings={settings} onChange={update} />}
           {section === "history" && <AiHistory />}

@@ -8,6 +8,7 @@ import NotesHub from "./NotesHub";
 import StickyNote from "./StickyNote";
 import Clipboard from "./Clipboard";
 import AiPanel from "./AiPanel";
+import Workflows from "./Workflows";
 import Settings from "./Settings";
 import Onboarding from "./Onboarding";
 
@@ -53,6 +54,8 @@ export default function App() {
       return <AiPanel />;
     case "settings":
       return <Settings />;
+    case "workflows":
+      return <Workflows />;
     case "onboarding":
       return <Onboarding />;
     default:
