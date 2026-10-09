@@ -1324,7 +1324,7 @@ fn allow_ai_microphone(uri: &str, app_origin: &tauri::Url, active: bool) -> bool
 #[cfg(windows)]
 fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     use webview2_com::{take_pwstr, Microsoft::Web::WebView2::Win32::*, PermissionRequestedEventHandler};
-    use webview_windows_core::Interface;
+    use windows_core::Interface;
     let app = window.app_handle().clone();
     let origin = if tauri::is_dev() {
         app.config().build.dev_url.clone()
@@ -1335,7 +1335,7 @@ fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     window.with_webview(move |webview| {
         // SAFETY: Tauri runs this closure and WebView2 callbacks on its UI thread.
         let result = unsafe {
-            (|| -> webview_windows_core::Result<()> {
+            (|| -> windows_core::Result<()> {
                 let core = webview.controller().CoreWebView2()?;
                 core.add_PermissionRequested(
                     &PermissionRequestedEventHandler::create(Box::new(move |_, args| {
@@ -1348,7 +1348,7 @@ fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
                         args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
                         args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
                             .SetSavesInProfile(false)?;
-                        let mut uri = webview_windows_core::PWSTR::null();
+                        let mut uri = windows_core::PWSTR::null();
                         args.Uri(&mut uri)?;
                         let uri = take_pwstr(uri);
                         let active = app.state::<Conversation>().0.lock().is_ok_and(|state| state.active);
