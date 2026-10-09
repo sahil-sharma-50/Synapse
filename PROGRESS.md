@@ -1,5 +1,23 @@
 # Synapse — Session Handoff
 
+## Current snapshot (2026-10-09)
+
+The Synapse website is live at https://sahil-sharma-50.github.io/Synapse/. Its source and GitHub Pages workflow are in this repository; website changes deploy from `main`. The landing page uses the approved dark-and-white design, real app captures, an interactive wheel guide, and navigation that expands on scroll. Setup, privacy, and 404 pages share its styling. No signup or checkout is connected.
+
+Repository integration checks passed: 45 frontend tests, 162 Rust library tests (nine environment-dependent tests ignored), one native-host test, 40 Chrome companion tests, five website tests, 13 guard selftests, all nine guards, typecheck, lint, frontend build, Rust formatting and Clippy. This does not complete the interactive Windows/microphone acceptance described below or publish a new desktop installer.
+
+The development checkout also includes the desktop-command milestone: app launching/switching, bounded local file/folder search, numbered orb choices and on-demand Windows context. See [desktop validation](docs/desktop-assistant-validation.md) for automated evidence and pending interactive/microphone checks. Independent review fixes and automated verification are complete (160 Rust tests, 44 frontend tests); interactive Windows/microphone acceptance remains pending. This is not in the published installer.
+
+The development checkout now includes **Teach Synapse**: editable, versioned recurring workflows taught by description, selected-app demonstration context or scoped Chrome/Windows recording; manual and voice-alias runs; managed local commands; artifacts, approvals and local history. Chrome companion 0.1.5 is required for browser recording. See [the guide and validation ledger](docs/teach-synapse.md). This feature is not part of the published v0.2.2 installer. Full four-routine repeated acceptance and real microphone acceptance remain pending.
+
+v0.2.2 is published for Windows x64 with a signed NSIS installer, signature, and `latest.json`. Existing Windows installs can use Settings → Updates to check and choose when to install it. The frontend, Rust, guard, and release workflows passed for that tag.
+
+The current app has an eight-action wheel, configurable shortcuts and appearance, local dictation, an AI voice orb with Anthropic/OpenAI/OpenRouter, assisted desktop actions, clipboard history, Notes Hub and sticky notes, screenshots, optional local TTS, AI conversation history and usage, and signed in-app updates. See [README.md](README.md) for the user-facing feature list and [AGENTS.md](AGENTS.md) for the current source map.
+
+**Current limits:** macOS code has not been validated on Mac hardware. The published installer and update feed are Windows x64. The entries below are historical session notes; their old feature lists, test counts, and next-step lists are not a current roadmap. Check the code and open issues before starting work.
+
+---
+
 ## In-app updates: signature verification for PR #20 (2026-08-06)
 
 The #20 review flagged that the hand-rolled updater ran a downloaded `.exe`

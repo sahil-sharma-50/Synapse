@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Synapse Browser Companion",
+  "version": "0.1.5",
+  "minimum_chrome_version": "125",
+  "description": "Browser actions for your local Synapse desktop assistant.",
+  "permissions": ["nativeMessaging", "debugger", "tabs", "storage", "alarms"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Synapse browser connection" },
+  "incognito": "not_allowed"
+}

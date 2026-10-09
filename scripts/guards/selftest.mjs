@@ -52,7 +52,11 @@ const CASES = [
     guard: "./window-labels.mjs",
     what: "a window label dropped from the capability file",
     break: (edit) =>
-      edit("synapse/src-tauri/capabilities/default.json", (s) => s.replace('"clipboard", ', "")),
+      edit("synapse/src-tauri/capabilities/default.json", (s) => {
+        const capability = JSON.parse(s);
+        capability.windows = capability.windows.filter((label) => label !== "clipboard");
+        return JSON.stringify(capability, null, 2);
+      }),
   },
   {
     guard: "./window-labels.mjs",
@@ -123,6 +127,15 @@ const CASES = [
     break: (edit) =>
       edit("synapse/src-tauri/tauri.conf.json", (s) =>
         s.replace('"createUpdaterArtifacts": true', '"createUpdaterArtifacts": false'),
+      ),
+  },
+  {
+    guard: "./no-auto-devtools.mjs",
+    what: "a window opening DevTools during startup",
+    break: (edit) =>
+      edit(
+        "synapse/src-tauri/src/lib.rs",
+        (s) => `${s}\nfn __guard_probe(window: tauri::WebviewWindow) { window.open_devtools(); }\n`,
       ),
   },
 ];

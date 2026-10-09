@@ -1,9 +1,14 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { Settings as SettingsData } from "./models";
 import Wheel from "./Wheel";
 import NotesHub from "./NotesHub";
 import StickyNote from "./StickyNote";
 import Clipboard from "./Clipboard";
 import AiPanel from "./AiPanel";
+import Workflows from "./Workflows";
 import Settings from "./Settings";
 import Onboarding from "./Onboarding";
 
@@ -11,10 +16,25 @@ import Onboarding from "./Onboarding";
 // label set in src-tauri/src/lib.rs. (A URL hash was tried first — Tauri
 // escapes the '#', so window.location.hash was always empty and each window
 // fell through to the wheel.)
+// The route is resolved before mounting so each Tauri window keeps its own
+// focused task surface and the utility windows stay independent in the same shell.
+// Picker surfaces stay keyboard-first even when they have no stored content yet.
 const NOTE_PREFIX = "note-";
 
 export default function App() {
   const label = getCurrentWindow().label;
+  useEffect(() => {
+    const apply = (settings: SettingsData) => {
+      document.documentElement.dataset.accent = settings.appearance.accent;
+    };
+    const listener = listen<SettingsData>("settings-changed", (event) => apply(event.payload));
+    invoke<SettingsData>("get_settings")
+      .then(apply)
+      .catch(() => {});
+    return () => {
+      void listener.then((stop) => stop());
+    };
+  }, []);
 
   // Sticky notes are created at runtime, one window per note, so their labels
   // carry the note id — the label is the only channel that survives, for the
@@ -34,6 +54,8 @@ export default function App() {
       return <AiPanel />;
     case "settings":
       return <Settings />;
+    case "workflows":
+      return <Workflows />;
     case "onboarding":
       return <Onboarding />;
     default:

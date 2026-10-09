@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  MODEL_CATALOG,
-  PROVIDER_LABELS,
-  modelFor,
-  type Provider,
-  type Settings,
-} from "../models";
+import { MODEL_CATALOG, PROVIDER_LABELS, modelFor, type Provider, type Settings } from "../models";
 import { ChipIcon, KeyIcon, LayersIcon } from "./icons";
+import { DEFAULT_GREETINGS } from "../greetings";
 
 const CUSTOM = "__custom__";
 
@@ -21,9 +16,26 @@ export default function AiSection({
   const [status, setStatus] = useState<Record<Provider, boolean>>({
     anthropic: false,
     openai: false,
+    openrouter: false,
   });
   const [keyInput, setKeyInput] = useState("");
   const [error, setError] = useState("");
+  const [editingKey, setEditingKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [browser, setBrowser] = useState({ connected: false, error: "" });
+
+  useEffect(() => {
+    const refresh = () => {
+      void invoke<typeof browser>("browser_status")
+        .then(setBrowser)
+        .catch((error) => setBrowser({ connected: false, error: String(error) }));
+    };
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => clearInterval(timer);
+  }, []);
 
   const provider = settings.ai.provider;
   const model = modelFor(settings, provider);
@@ -35,52 +47,68 @@ export default function AiSection({
   // Local-only UI state for the custom-model text field. Kept separate from
   // `settings` so typing doesn't write settings.json (and broadcast
   // `settings-changed`) on every keystroke — only a debounced commit or blur
-  // does. `customPicked` tracks "user just chose Custom… from the dropdown"
-  // before they've typed anything, so the field can appear without ever
-  // persisting an empty model string.
-  const [customPicked, setCustomPicked] = useState(false);
-  const [customDraft, setCustomDraft] = useState(isCustom ? model : "");
+  // does. `customPickedProvider` tracks a provider where the user just chose
+  // "Custom…" before they've typed anything, so the field can appear without
+  // ever persisting an empty model string.
+  const [customDrafts, setCustomDrafts] = useState<Partial<Record<Provider, string>>>({});
+  const [customPickedProvider, setCustomPickedProvider] = useState<Provider | null>(null);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Switching provider swaps which model this UI is editing, so the local
-  // draft has to be re-derived for the new provider rather than carrying
-  // over stale text from the previous one.
-  useEffect(() => {
-    setCustomPicked(false);
-    setCustomDraft(isCustom ? model : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  // A provider-keyed draft keeps switching providers from carrying stale text
+  // into the next model field.
+  const customDraft = customDrafts[provider] ?? (isCustom ? model : "");
+  const showCustomField = isCustom || customPickedProvider === provider;
+
+  function clearCommitTimer() {
+    if (commitTimer.current) {
+      clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+    }
+  }
 
   useEffect(() => {
     return () => {
-      if (commitTimer.current) clearTimeout(commitTimer.current);
+      clearCommitTimer();
     };
   }, []);
 
   function refreshStatus() {
-    invoke<Record<Provider, boolean>>("provider_status").then(setStatus);
+    invoke<Record<Provider, boolean>>("provider_status")
+      .then(setStatus)
+      .catch((e) => setError(String(e)));
   }
 
   useEffect(refreshStatus, []);
 
   function setProvider(next: Provider) {
+    setKeyInput("");
+    setEditingKey(false);
+    setShowKey(false);
+    setConfirmRemove(false);
+    setError("");
+    clearCommitTimer();
+    setCustomPickedProvider(null);
     onChange({ ...settings, ai: { ...settings.ai, provider: next } });
   }
 
   function setModel(next: string) {
-    const key = provider === "anthropic" ? "anthropic_model" : "openai_model";
+    const key = `${provider}_model`;
     onChange({ ...settings, ai: { ...settings.ai, [key]: next } });
   }
 
   function selectModel(value: string) {
+    clearCommitTimer();
     if (value === CUSTOM) {
       // Reveal the custom field without persisting an empty model string —
       // only committing actual typed text should trigger a settings write.
-      setCustomPicked(true);
-      setCustomDraft(isCustom ? model : "");
+      setCustomPickedProvider(provider);
+      setCustomDrafts((drafts) => ({
+        ...drafts,
+        [provider]: drafts[provider] ?? (isCustom ? model : ""),
+      }));
       return;
     }
-    setCustomPicked(false);
+    setCustomPickedProvider(null);
     setModel(value);
   }
 
@@ -93,37 +121,46 @@ export default function AiSection({
   }
 
   function onCustomInput(value: string) {
-    setCustomDraft(value);
-    if (commitTimer.current) clearTimeout(commitTimer.current);
+    setCustomDrafts((drafts) => ({ ...drafts, [provider]: value }));
+    clearCommitTimer();
     commitTimer.current = setTimeout(() => commitCustom(value), 400);
   }
 
   function onCustomBlur() {
-    if (commitTimer.current) clearTimeout(commitTimer.current);
+    clearCommitTimer();
     commitCustom(customDraft);
   }
 
-  const showCustomField = isCustom || customPicked;
-
   async function saveKey() {
-    if (!keyInput.trim()) return;
+    if (!keyInput.trim() || keyBusy) return;
+    setKeyBusy(true);
     try {
       setError("");
       await invoke("set_api_key", { provider, key: keyInput.trim() });
       setKeyInput("");
-      refreshStatus();
+      setEditingKey(false);
+      setShowKey(false);
+      setStatus((current) => ({ ...current, [provider]: true }));
     } catch (e) {
       setError(String(e));
+    } finally {
+      setKeyBusy(false);
     }
   }
 
   async function removeKey() {
+    if (keyBusy) return;
+    setKeyBusy(true);
     try {
       setError("");
       await invoke("delete_api_key", { provider });
-      refreshStatus();
+      setStatus((current) => ({ ...current, [provider]: false }));
+      setConfirmRemove(false);
+      setKeyInput("");
     } catch (e) {
       setError(String(e));
+    } finally {
+      setKeyBusy(false);
     }
   }
 
@@ -132,12 +169,147 @@ export default function AiSection({
       <div className="set-page-head">
         <h2 className="set-title">AI</h2>
         <p className="set-subtitle">
-          Synapse talks to your own account. Pick a provider and paste its key — there is no
-          Synapse server in between.
+          A familiar voice when you open AI. Personalize what Synapse says hello with.
         </p>
       </div>
 
-      <div className="set-card-title">Connection</div>
+      <h3 className="set-card-title">Greetings</h3>
+      <div className="set-card">
+        <label className="set-card-row set-greetings">
+          <span className="set-label">Custom greetings</span>
+          <span className="set-sublabel" id="greetings-help">
+            One greeting per line. Synapse picks one at random each time you open AI. Leave this
+            blank to use the five built-in greetings.
+          </span>
+          <textarea
+            className="set-input"
+            rows={5}
+            maxLength={4000}
+            aria-describedby="greetings-help"
+            placeholder={DEFAULT_GREETINGS.join("\n")}
+            value={settings.ai.custom_greetings ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                ai: { ...settings.ai, custom_greetings: event.target.value },
+              })
+            }
+          />
+        </label>
+      </div>
+      <p className="set-hint">
+        Greetings and replies use the voice selected in Voice settings. Speak at any time to
+        interrupt.
+      </p>
+
+      <h3 className="set-card-title">Computer assistant</h3>
+      <div className="set-card">
+        <label className="set-card-row">
+          <span className="set-label-stack">
+            <span className="set-label">Hybrid desktop control</span>
+            <span className="set-sublabel">
+              ~typesafe/jev-latest via OpenRouter · GPT-4o Mini for planning and replies
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.ai.hybrid ?? true}
+            onChange={(event) =>
+              onChange({ ...settings, ai: { ...settings.ai, hybrid: event.target.checked } })
+            }
+          />
+        </label>
+      </div>
+      <p className="set-hint">
+        Uses your saved OpenRouter and OpenAI keys. During tasks, relevant window text is shared; a
+        window screenshot is shared when needed. Routine clicks, typing and navigation run
+        automatically. Sensitive actions and unverified screen targets still need review. Press
+        Ctrl+Alt+Escape anywhere to stop, or speak to interrupt. Costs and your daily limit are in
+        Usage. Action results are in Conversations.
+      </p>
+
+      <h3 className="set-card-title">Connections &amp; chat model</h3>
+      <p className="set-hint">
+        When you ask for a desktop task, Synapse reads the current app and relevant visible or
+        selected content. Your configured AI providers may receive that context and matching file
+        names. Synapse does not keep a background activity timeline.
+      </p>
+      <div className="set-card">
+        <label className="set-card-row">
+          <span className="set-label-stack">
+            <span className="set-label">Chrome control</span>
+            <span className="set-sublabel" role="status">
+              {!(settings.ai.browser_control ?? false)
+                ? "Chrome control off"
+                : browser.connected
+                  ? "Companion connected"
+                  : browser.error === "Chrome control disabled"
+                    ? "Waiting for Chrome companion"
+                    : browser.error || "Waiting for Chrome companion"}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.ai.browser_control ?? false}
+            disabled={!(settings.ai.hybrid ?? true)}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                ai: { ...settings.ai, browser_control: event.target.checked },
+              })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Start AI with typing</span>
+          <input
+            type="checkbox"
+            checked={settings.ai.typing_mode}
+            onChange={(event) =>
+              onChange({ ...settings, ai: { ...settings.ai, typing_mode: event.target.checked } })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Require a prefix before voice commands</span>
+          <input
+            type="checkbox"
+            checked={settings.ai.voice_address_required}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                ai: { ...settings.ai, voice_address_required: event.target.checked },
+              })
+            }
+          />
+        </label>
+        <label className="set-card-row">
+          <span className="set-label">Voice command prefix</span>
+          <span className="set-control">
+            <input
+              className="set-input"
+              type="text"
+              value={settings.ai.voice_prefix ?? "Synapse"}
+              maxLength={64}
+              placeholder="Synapse"
+              aria-describedby="voice-prefix-help"
+              onChange={(event) =>
+                onChange({ ...settings, ai: { ...settings.ai, voice_prefix: event.target.value } })
+              }
+            />
+          </span>
+        </label>
+      </div>
+      <p className="set-hint" id="voice-prefix-help">
+        Choose a word or phrase, such as “Jarvis” or “Hey assistant”. Blank uses “Synapse”. Changes
+        apply to the next voice command.
+      </p>
+      <p className="set-hint">
+        Load the local Chrome companion and register its native host once. Browser tasks share
+        relevant task-page text with your AI providers; passwords, payment fields and unrelated
+        pages are excluded. Form submissions and consequential actions require review. Chrome shows
+        a debugging indicator while a task runs. The extension popup provides Stop and Reconnect.
+      </p>
       <div className="set-card">
         <label className="set-card-row">
           <span className="set-row-icon">
@@ -147,6 +319,7 @@ export default function AiSection({
           <div className="set-control">
             <select
               className="set-input"
+              disabled={keyBusy}
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
             >
@@ -189,7 +362,7 @@ export default function AiSection({
             <div className="set-control">
               <input
                 className="set-input"
-                placeholder="Model ID"
+                placeholder={provider === "openrouter" ? "provider/model-name" : "Model ID"}
                 value={customDraft}
                 onChange={(e) => onCustomInput(e.target.value)}
                 onBlur={onCustomBlur}
@@ -198,41 +371,116 @@ export default function AiSection({
           </label>
         )}
 
+        {provider === "openrouter" && (
+          <p className="set-card-row set-sublabel">
+            Choose Custom to use any OpenRouter chat model. Paste its full model ID, such as
+            openai/gpt-4o. Auto lets OpenRouter choose a model.
+          </p>
+        )}
+
         <div className="set-card-row">
           <span className="set-row-icon">
             <KeyIcon />
           </span>
-          <span className="set-label">API key</span>
-          <div className="set-key">
-            <span
-              className={`set-badge ${status[provider] ? "set-ok" : "set-missing"}`}
-            >
-              {status[provider] ? "Key set" : "No key"}
+          <span className="set-label-stack">
+            <span className="set-label">API key</span>
+            <span className="set-sublabel">
+              {status[provider]
+                ? "Saved securely in your system keychain"
+                : "Connect your own account to use AI"}
             </span>
-            <input
-              className="set-input"
-              type="password"
-              placeholder={`${PROVIDER_LABELS[provider]} API key`}
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && saveKey()}
-            />
-            <button className="set-btn" onClick={saveKey} disabled={!keyInput.trim()}>
-              Save
-            </button>
-            {status[provider] && (
-              <button className="set-btn set-btn-quiet" onClick={removeKey}>
-                Remove
-              </button>
-            )}
-          </div>
+          </span>
+          {status[provider] && !editingKey && (
+            <div className="set-control">
+              {confirmRemove ? (
+                <>
+                  <span className="set-note">Remove saved key?</span>
+                  <button className="set-btn set-btn-danger" disabled={keyBusy} onClick={removeKey}>
+                    Remove key
+                  </button>
+                  <button
+                    className="set-btn set-btn-quiet"
+                    disabled={keyBusy}
+                    onClick={() => setConfirmRemove(false)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="set-btn set-btn-quiet" onClick={() => setEditingKey(true)}>
+                    Change key
+                  </button>
+                  <button className="set-btn set-btn-quiet" onClick={() => setConfirmRemove(true)}>
+                    Remove
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
+        {(!status[provider] || editingKey) && (
+          <form
+            className="set-key-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveKey();
+            }}
+          >
+            <label className="set-label" htmlFor="provider-api-key">
+              {editingKey ? "Replace" : "Add"} {PROVIDER_LABELS[provider]} API key
+            </label>
+            <div className="set-key-entry">
+              <input
+                id="provider-api-key"
+                className="set-input"
+                type={showKey ? "text" : "password"}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Paste your API key"
+                value={keyInput}
+                disabled={keyBusy}
+                onChange={(event) => setKeyInput(event.target.value)}
+              />
+              <button
+                type="button"
+                className="set-btn set-btn-quiet"
+                aria-pressed={showKey}
+                onClick={() => setShowKey(!showKey)}
+              >
+                {showKey ? "Hide" : "Show"}
+              </button>
+            </div>
+            <div className="set-actions">
+              <button className="set-btn" disabled={!keyInput.trim() || keyBusy}>
+                {keyBusy ? "Saving…" : "Save key"}
+              </button>
+              {status[provider] && (
+                <button
+                  type="button"
+                  className="set-btn set-btn-quiet"
+                  disabled={keyBusy}
+                  onClick={() => {
+                    setEditingKey(false);
+                    setKeyInput("");
+                    setShowKey(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        )}
       </div>
 
-      {error && <div className="set-error">{error}</div>}
+      {error && (
+        <div className="set-error" role="alert">
+          {error}
+        </div>
+      )}
       <p className="set-hint">
-        Keys are stored in the Windows Credential Manager, never in Synapse's
-        settings file.
+        Keys are stored in the Windows Credential Manager, never in Synapse's settings file.
       </p>
     </div>
   );

@@ -1,3 +1,4 @@
+use crate::settings::VoiceSettings;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat};
 use parakeet_rs::{ParakeetTDT, TimestampMode, Transcriber};
@@ -11,8 +12,6 @@ use std::time::{Duration, Instant};
 /// "The requested stream configuration is not supported by the device."
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 
-const SILENCE_TIMEOUT_MS: u64 = 900;
-
 /// A runaway guard, not a UX mechanism. Dictation ends when the user ends it;
 /// this only exists so a forgotten recording can't grow without bound. At
 /// 16 kHz mono f32 the buffer costs ~64 KB/s, so five minutes is ~19 MB.
@@ -22,8 +21,6 @@ const MAX_RECORD_MS: u128 = 300_000;
 /// level meter sitting flat and decide for themselves, so bailing out from
 /// under them would be worse than waiting.
 const NO_SPEECH_TIMEOUT_MS: u128 = 6_000;
-
-const SILENCE_RMS_THRESHOLD: f32 = 0.015;
 
 /// One sample of recording state, handed to the caller ~20x/second so it can
 /// drive a live meter. `asr.rs` deliberately knows nothing about Tauri, so the
@@ -37,6 +34,19 @@ pub struct Tick {
 
 static MODEL: OnceLock<Mutex<ParakeetTDT>> = OnceLock::new();
 static STOP: AtomicBool = AtomicBool::new(false);
+static RECORDING: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+#[test]
+fn cancelled_recording_never_opens_the_microphone() {
+    let text = record_and_transcribe(
+        VoiceSettings::default(),
+        |_| panic!("cancelled recording ticked"),
+        || true,
+    )
+    .unwrap();
+    assert!(text.is_empty());
+}
 
 /// Lets the UI end recording early (clicking the listening pill, or Esc).
 pub fn request_stop() {
@@ -125,7 +135,7 @@ fn build_stream<T>(
     buffer: Arc<Mutex<Vec<f32>>>,
     state: Arc<Mutex<SilenceState>>,
     done: Arc<AtomicBool>,
-    auto_stop: bool,
+    voice: VoiceSettings,
 ) -> Result<cpal::Stream, String>
 where
     T: cpal::SizedSample,
@@ -150,7 +160,7 @@ where
                     st.level * 0.75 + level * 0.25
                 };
 
-                if level > SILENCE_RMS_THRESHOLD {
+                if level > voice.speech_threshold {
                     st.heard_speech = true;
                     st.silence_since = None;
                 } else if st.heard_speech && st.silence_since.is_none() {
@@ -159,11 +169,11 @@ where
 
                 // The level tracking above runs unconditionally because it
                 // feeds the meter; only the *stop* is opt-in.
-                if !auto_stop {
+                if !voice.auto_stop_on_silence {
                     return;
                 }
                 if let Some(since) = st.silence_since {
-                    if since.elapsed().as_millis() as u64 >= SILENCE_TIMEOUT_MS {
+                    if since.elapsed().as_millis() as u64 >= voice.silence_ms {
                         done.store(true, Ordering::SeqCst);
                     }
                 }
@@ -180,7 +190,15 @@ where
 ///
 /// `on_tick` is called roughly every 50 ms with the live input level so the
 /// caller can drive a meter. It must not block.
-pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> Result<String, String> {
+pub fn record_and_transcribe(
+    voice: VoiceSettings,
+    mut on_tick: impl FnMut(Tick),
+    cancelled: impl Fn() -> bool,
+) -> Result<String, String> {
+    let _recording = RECORDING.lock().map_err(|_| "microphone lock poisoned")?;
+    if cancelled() {
+        return Ok(String::new());
+    }
     STOP.store(false, Ordering::SeqCst);
 
     let host = cpal::default_host();
@@ -203,24 +221,12 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
     let state = Arc::new(Mutex::new(SilenceState::new()));
 
     let stream = match sample_format {
-        SampleFormat::F32 => {
-            build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
-        SampleFormat::I16 => {
-            build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
-        SampleFormat::U16 => {
-            build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
-        SampleFormat::I32 => {
-            build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
-        SampleFormat::I8 => {
-            build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
-        SampleFormat::U8 => {
-            build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), auto_stop)
-        }
+        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
         other => Err(format!("unsupported microphone sample format: {other:?}")),
     }?;
 
@@ -228,6 +234,9 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
 
     let start = Instant::now();
     loop {
+        if cancelled() {
+            return Ok(String::new());
+        }
         if done.load(Ordering::SeqCst) || STOP.load(Ordering::SeqCst) {
             break;
         }
@@ -245,9 +254,9 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
         // and nothing will ever end the recording, so bail. In manual mode the
         // user is watching a flat meter and can stop it themselves — taking the
         // decision away from them mid-thought is the behaviour we just removed.
-        if auto_stop && elapsed >= NO_SPEECH_TIMEOUT_MS && !heard_speech {
+        if voice.auto_stop_on_silence && elapsed >= NO_SPEECH_TIMEOUT_MS && !heard_speech {
             drop(stream);
-            return Err("no speech detected - is the right microphone selected?".into());
+            return Ok(String::new());
         }
 
         on_tick(Tick {
@@ -258,6 +267,10 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
         std::thread::sleep(Duration::from_millis(50));
     }
     drop(stream);
+
+    if cancelled() {
+        return Ok(String::new());
+    }
 
     let raw = buffer.lock().unwrap().clone();
     if raw.is_empty() {
@@ -270,6 +283,12 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
         samples.len() as f32 / TARGET_SAMPLE_RATE as f32
     );
 
+    transcribe_audio(&samples, TARGET_SAMPLE_RATE)
+}
+
+/// Shared local recognizer for native dictation and the orb's echo-cancelled PCM.
+pub fn transcribe_audio(samples: &[f32], sample_rate: u32) -> Result<String, String> {
+    let samples = prepare_audio(samples, sample_rate)?;
     let model_lock = MODEL
         .get()
         .ok_or("speech model still loading - try again in a moment")?;
@@ -279,6 +298,38 @@ pub fn record_and_transcribe(auto_stop: bool, mut on_tick: impl FnMut(Tick)) -> 
         .map_err(|e| e.to_string())?;
 
     Ok(result.text)
+}
+
+fn prepare_audio(samples: &[f32], sample_rate: u32) -> Result<Vec<f32>, String> {
+    if !(8_000..=96_000).contains(&sample_rate)
+        || samples.is_empty()
+        || samples.len() > sample_rate as usize * 300
+        || samples.iter().any(|sample| !sample.is_finite())
+    {
+        return Err("Invalid microphone audio".into());
+    }
+    // Float microphone PCM can exceed full scale after gain/echo processing.
+    // Preserve the waveform instead of rejecting a whole utterance for one peak.
+    let peak = samples.iter().fold(1.0_f32, |peak, sample| peak.max(sample.abs()));
+    if peak > 1.0 {
+        let normalized: Vec<_> = samples.iter().map(|sample| sample / peak).collect();
+        Ok(to_mono_16k(&normalized, sample_rate, 1))
+    } else {
+        Ok(to_mono_16k(samples, sample_rate, 1))
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn microphone_gain_peaks_do_not_stop_transcription() {
+    let pcm =
+        prepare_audio(&[0.0, 0.5, 1.08, -1.2, 0.25], 16_000).expect("finite amplified PCM is valid microphone audio");
+    assert!(pcm.iter().all(|sample| sample.is_finite() && sample.abs() <= 1.0));
+    assert_eq!(prepare_audio(&[0.0, 0.5, -0.5], 16_000).unwrap(), vec![0.0, 0.5, -0.5]);
+    assert!(prepare_audio(&[f32::NAN], 16_000).is_err());
+    assert!(prepare_audio(&[f32::INFINITY], 16_000).is_err());
+    assert!(prepare_audio(&[], 16_000).is_err());
+    assert!(prepare_audio(&[0.1], 0).is_err());
 }
 
 /// Briefly opens (and immediately drops) an input stream to confirm Windows
@@ -301,13 +352,14 @@ pub fn check_mic_access() -> Result<(), String> {
     let done = Arc::new(AtomicBool::new(false));
     let state = Arc::new(Mutex::new(SilenceState::new()));
 
+    let voice = VoiceSettings::default();
     let stream = match sample_format {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
-        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
-        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
-        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
-        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
-        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), false),
+        SampleFormat::F32 => build_stream::<f32>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I16 => build_stream::<i16>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::U16 => build_stream::<u16>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I32 => build_stream::<i32>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::I8 => build_stream::<i8>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
+        SampleFormat::U8 => build_stream::<u8>(&device, &config, buffer.clone(), state.clone(), done.clone(), voice),
         other => Err(format!("unsupported microphone sample format: {other:?}")),
     }?;
 

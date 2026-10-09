@@ -1,0 +1,169 @@
+<main id="main" class="wrap guide">
+  <div class="guide-heading">
+    <h1>A shortcut to<br />getting started.</h1>
+    <p class="lead">A few minutes of setup. Then back to your day.</p>
+    <div class="guide-notice">
+      This guide covers the <strong>current public Windows build</strong>. The future paid edition
+      is still in development. <a href="/#faq">Read the pricing FAQ</a>.
+    </div>
+  </div>
+  <div class="guide-layout">
+    <aside>
+      <nav aria-label="On this page">
+        <span>In this guide</span><a href="#install">Install Synapse</a
+        ><a href="#shortcuts">Learn the shortcuts</a><a href="#voice">Set up local speech</a
+        ><a href="#ai">Connect your AI</a><a href="#everyday">Find your tools</a
+        ><a href="#help">Troubleshooting</a>
+      </nav>
+    </aside>
+    <div class="guide-content">
+      <section id="install">
+        <h2>Install Synapse</h2>
+        <p>
+          Download the Windows x64 installer from the official GitHub release. Choose the file
+          ending in <code>_x64-setup.exe</code>, run it, and follow the setup steps.
+        </p>
+        <a class="pill light" href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
+          >Download for Windows
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg
+        ></a>
+        <p class="fine-print">Windows x64. The download opens the official release page.</p>
+        <p>
+          First-run setup explains microphone access and optional speech downloads. You can skip
+          them and return to <strong>Settings → Voice</strong> later. Synapse lives in the system
+          tray while you work.
+        </p>
+      </section>
+      <section id="shortcuts">
+        <h2>One shortcut to bring it closer.</h2>
+        <dl class="shortcut-list">
+          <div>
+            <dt>Open the radial menu</dt>
+            <dd><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Enter</kbd></dd>
+          </div>
+          <div>
+            <dt>Start dictation directly</dt>
+            <dd><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>D</kbd></dd>
+          </div>
+          <div>
+            <dt>Finish dictation</dt>
+            <dd><kbd>Enter</kbd> or click the listening circle</dd>
+          </div>
+        </dl>
+        <p>
+          Open the wheel while you’re in another app, then choose a tool. Change shortcuts in
+          <strong>Settings → Controls</strong>, and customize the wheel in
+          <strong>Settings → Wheel &amp; color</strong>.
+        </p>
+      </section>
+      <section id="voice">
+        <h2>Set up local speech</h2>
+        <p>
+          For dictation, download the optional speech model in <strong>Settings → Voice</strong>.
+          It’s about 630 MB. Once downloaded, transcription runs on your computer without an AI API
+          key.
+        </p>
+        <p>
+          Select your microphone, focus a text field in another app, and start dictating. Press
+          Enter or click the listening circle when you’re finished. Dictation doesn’t stop
+          automatically on silence by default.
+        </p>
+        <p>
+          For local spoken replies, the optional voice engine downloads a runtime and model files
+          using roughly 1-2 GB. Speak Selected Text can also use the operating system’s voice
+          fallback.
+        </p>
+      </section>
+      <section id="ai">
+        <h2>Your AI provider, connected.</h2>
+        <ol>
+          <li>Get an API key from your chosen provider: Anthropic, OpenAI or OpenRouter.</li>
+          <li>Open <strong>Settings → AI</strong> and add the key for that provider.</li>
+          <li>Choose a model, then open AI from the wheel to start a conversation.</li>
+        </ol>
+        <p>
+          Provider requests require internet access and may incur usage charges. Those charges are
+          separate from any future Synapse purchase. Keys are stored in your OS credential store.
+        </p>
+        <figure class="guide-image">
+          <img
+            src="/assets/usuage_stats.png"
+            alt="Synapse Usage settings with request, token and estimated cost breakdowns"
+            width="1536"
+            height="1024"
+            loading="lazy"
+          />
+          <figcaption>
+            Settings → Usage shows local estimates. Your provider’s bill is authoritative.
+          </figcaption>
+        </figure>
+      </section>
+      <section id="everyday">
+        <h2>The things you reach for.</h2>
+        <dl class="tool-definitions">
+          <div>
+            <dt>Clipboard</dt>
+            <dd>
+              Search, pin and paste copied text. Review capture and retention settings; clipboard
+              history can contain sensitive information.
+            </dd>
+          </div>
+          <div>
+            <dt>Notepad</dt>
+            <dd>Open Notes Hub for rich notes, folders and sticky notes on your desktop.</dd>
+          </div>
+          <div>
+            <dt>Screenshot</dt>
+            <dd>
+              Capture the monitor under your cursor. Synapse saves a PNG in
+              <code>Pictures/Synapse</code> and copies it to the clipboard.
+            </dd>
+          </div>
+          <div>
+            <dt>Speak Selected Text</dt>
+            <dd>Select text in another app, then choose this action to hear it read aloud.</dd>
+          </div>
+        </dl>
+      </section>
+      <section id="help">
+        <h2>A little help, if you need it.</h2>
+        <details>
+          <summary>The shortcut doesn’t open the wheel.</summary>
+          <p>
+            Check that Synapse is running in the system tray. Another app may use the same shortcut;
+            change it in Settings → Controls and try again.
+          </p>
+        </details>
+        <details>
+          <summary>Dictation isn’t picking up my voice.</summary>
+          <p>
+            Check Windows microphone permissions and your selected input device. Confirm that the
+            speech model download is complete in Settings → Voice, and test in a normal text field.
+          </p>
+        </details>
+        <details>
+          <summary>AI replies aren’t working.</summary>
+          <p>
+            Check your internet connection, chosen provider, API key and provider billing. An
+            ordinary chat subscription may not include API usage. Read the error shown in Synapse
+            before trying again.
+          </p>
+        </details>
+        <details>
+          <summary>How do I update the app?</summary>
+          <p>
+            Open Settings → Updates to check for a release and choose when to install. The updater
+            verifies the installer signature. Installing an update restarts Synapse.
+          </p>
+        </details>
+        <p>
+          Still stuck?
+          <a href="https://github.com/sahil-sharma-50/Synapse/issues"
+            >Check or report an issue on GitHub</a
+          >. Don’t include API keys, private notes or clipboard contents in a public report.
+        </p>
+      </section>
+    </div>
+  </div>
+</main>

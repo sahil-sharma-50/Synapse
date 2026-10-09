@@ -217,6 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .worktrees/
+.playwright-cli/
+.playwright-mcp/
+output/
 
 # ASR spike model weights (downloaded separately, not checked in)
 spikes/asr-spike/model/*.onnx

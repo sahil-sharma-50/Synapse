@@ -1,5 +1,7 @@
 # Synapse — Product Requirements Document (v1)
 
+> Historical v1 planning document (last revised in July 2026). It describes features and constraints that changed during implementation, including Snippets, a single Notepad, automatic dictation stop, and notify-only updates. For the current app, use [README.md](README.md), [PRODUCT.md](PRODUCT.md), and the code. Keep this document as design history rather than treating it as a release specification.
+
 **Status:** Draft for review
 **Owner:** [TBD]
 **Last updated:** 2026-07-31
@@ -11,6 +13,7 @@
 Synapse is a cross-platform (macOS + Windows) desktop utility that puts voice dictation, quick AI assistance, and quick-capture tools one hotkey away. Pressing `Ctrl+Alt+Enter` summons a circular radial menu at the current mouse position, letting users pick an action with a single click — no app switching, no typing a command.
 
 **Core pillars for v1:**
+
 1. **Speech-to-Text** — instant local voice dictation into any focused field
 2. **AI Assistance** — a text-based AI chat panel, one hotkey away
 3. **Capture** — quick utilities: Screenshot, Snippet (text templates), Notepad (scratchpad)
@@ -31,6 +34,7 @@ v1 is deliberately scoped tight: get the app running well and looking good on bo
 ## 3. Reference / Design Inspiration
 
 Visual and structural inspiration was pulled from an existing macOS utility ("Dyslexic Kit"):
+
 - **Radial "pick a slice" menu**: dark background, thin wedge dividers, icon + number per slice, center hub shows a hint label ("Pick a slice") and an `esc` cancel affordance. Synapse's menu should follow this same visual language — circular, high-contrast, icon-forward, minimal chrome.
 - **Settings panel structure**: a left-hand sidebar grouping settings into logical sections (General Settings, Shortcuts, Modes, Microphone, Models, Voices, AI, Permissions, etc.). Synapse's own preferences window should follow a similar sectioned-sidebar pattern rather than one long settings page.
 
@@ -41,6 +45,7 @@ Visual and structural inspiration was pulled from an existing macOS utility ("Dy
 ## 4. User Interaction Flow
 
 ### 4.1 Invocation
+
 - Global hotkey: **`Ctrl+Alt+Enter`** (must work system-wide, regardless of focused app)
 - On trigger, the circular menu appears **centered on the current mouse cursor position**
 - Window is always-on-top, transparent background outside the circle, no OS window chrome
@@ -51,19 +56,20 @@ Visual and structural inspiration was pulled from an existing macOS utility ("Dy
 
 **A single flat ring of 5 wedges:**
 
-| Wedge | Icon concept | Action |
-|---|---|---|
-| Speech-to-Text | Microphone | Starts local voice transcription immediately |
-| AI | Sparkle icon | Opens the AI chat panel |
-| Screenshot | Camera | Instant full-screen capture |
-| Snippet | Text/Abc icon | Opens searchable list of saved text snippets |
-| Notepad | Note icon | Opens the persistent scratchpad |
+| Wedge          | Icon concept  | Action                                       |
+| -------------- | ------------- | -------------------------------------------- |
+| Speech-to-Text | Microphone    | Starts local voice transcription immediately |
+| AI             | Sparkle icon  | Opens the AI chat panel                      |
+| Screenshot     | Camera        | Instant full-screen capture                  |
+| Snippet        | Text/Abc icon | Opens searchable list of saved text snippets |
+| Notepad        | Note icon     | Opens the persistent scratchpad              |
 
 Selection is **mouse-only** for v1 (click a wedge). No keyboard navigation of the wheel itself (number-key shortcuts may be a natural v2 addition, following the reference app's numbered-slice pattern). There is no nested/sub-menu ring in v1 — every action is one hotkey press + one click.
 
 ### 4.3 Feature Behaviors
 
 **Speech-to-Text**
+
 - Reachable two ways: selecting the wedge, or a **dedicated direct hotkey** that starts dictation without opening the wheel at all (the most-used feature shouldn't cost an extra click)
 - Recording begins immediately on invocation; the wheel (if open) collapses into a small floating pill near the cursor showing a live waveform / recording state
 - Audio is transcribed **locally** using the Parakeet ASR model (see §6.2)
@@ -71,6 +77,7 @@ Selection is **mouse-only** for v1 (click a wedge). No keyboard navigation of th
 - Transcribed text is inserted into whatever field currently has OS focus via clipboard paste-and-restore (see §6.4) — no intermediate review/edit step in v1
 
 **AI**
+
 - Selecting the wedge opens a small floating chat panel
 - Text in, text out: the user types (or dictates) a prompt and receives a streamed response
 - The response can be inserted into the currently focused field, the same way Speech-to-Text and Snippet insert text
@@ -78,15 +85,18 @@ Selection is **mouse-only** for v1 (click a wedge). No keyboard navigation of th
 - User selects their preferred LLM provider (Anthropic Claude or OpenAI) in Settings; both are supported from day one since both expose comparable text/streaming APIs
 
 **Screenshot**
+
 - Selecting the wedge **immediately** captures the full screen (no region-select step in v1)
 - Result is saved to disk (default location, configurable in Settings) and copied to the clipboard
 
 **Snippet**
+
 - A **reusable text template manager**. Selecting the wedge opens a searchable list/picker of previously saved snippets
 - Picking a snippet **inserts/types it into the currently focused field**, via the same clipboard paste-and-restore mechanism as Speech-to-Text
 - Snippets are created and managed from the Settings panel (create, edit, delete, search)
 
 **Notepad**
+
 - Opens a **single, persistent, auto-saving scratchpad window**
 - Same note every time — not a new note per invocation. Content persists across app restarts
 
@@ -118,6 +128,7 @@ Following the sectioned-sidebar pattern from the reference app, Settings should 
 **Decision: Tauri v2 (Rust core + web-based frontend)**
 
 Rationale:
+
 - Cross-platform (macOS + Windows) from a single codebase
 - First-class support for transparent, always-on-top, chromeless windows — required for the circular overlay
 - First-class global hotkey APIs
@@ -130,6 +141,7 @@ Rationale:
 **Consequence of transparency:** achieving the transparent circular window requires `macOSPrivateApi: true` in the Tauri config, which permanently disqualifies the app from Mac App Store distribution. Since v1 distribution is direct-download only (see §8), this has no practical cost, but it is a one-way door worth recording.
 
 Rejected alternatives:
+
 - **Electron**: same UI flexibility, but heavier (memory/disk/startup time), which works against the "instant overlay" goal
 - **Native per-platform (Swift/SwiftUI + C#/WinUI)**: best possible performance/OS integration, but doubles v1 build and maintenance effort — not justified at this stage
 
@@ -140,6 +152,7 @@ Rejected alternatives:
 **Deployment decision:** Run the model **in-process, in the Rust core**, as an ONNX model via the `parakeet-rs` crate (ONNX Runtime under the hood — DirectML/CUDA on Windows, WebGPU/Metal on macOS, with automatic CPU fallback). Local voice-activity detection (Silero VAD, also via ONNX) runs on the live microphone stream to detect silence and trigger the transcription pass; TDT 0.6B itself is used as an offline (non-streaming) model over the buffered utterance.
 
 Why this approach over a Python sidecar:
+
 - **No second process.** A bundled Python interpreter + NeMo/Transformers sidecar, communicating over local IPC/HTTP, adds a process to supervise, a multi-second cold start, and a large distribution footprint
 - **Small installer.** The ONNX model is on the order of a few hundred MB, downloaded on first run (see below) rather than bundled — the installer itself stays small
 - **Fast on both platforms.** GPU acceleration is available on macOS via Metal/WebGPU and on Windows via DirectML/CUDA, avoiding the CPU-only-on-Mac slowdown that a NeMo/Transformers-based sidecar would hit (NeMo/Transformers do not reliably accelerate on Apple Silicon)
@@ -167,6 +180,7 @@ Why this approach over a Python sidecar:
 ## 7. Platform & Permissions Requirements
 
 Both macOS and Windows require explicit OS-level permission grants for core functionality:
+
 - **Microphone access** — required for Speech-to-Text
 - **Screen recording permission** (macOS) — required for Screenshot
 - **Accessibility permissions** (macOS) and equivalent UI-automation permissions (Windows) — required for **both** Speech-to-Text and Snippet, since inserting transcribed/snippet text into the focused field requires synthesizing a paste keystroke into another application
@@ -191,14 +205,14 @@ Both macOS and Windows require explicit OS-level permission grants for core func
 
 ## 9. Known Risks & Open Questions
 
-| Risk / Open Item | Notes |
-|---|---|
-| `parakeet-rs` is a community dependency | Not an NVIDIA-official SDK. Best available embeddable ONNX path today; pin the version and monitor for breakage. |
-| macOS focus/activation behavior untested | The Windows overlay uses capture-and-restore (§6.1), not non-activation, after `WS_EX_NOACTIVATE` proved incompatible with reliable click delivery under WRY. Whether `tauri-nspanel`'s non-activating approach works cleanly on macOS, or needs the same capture-and-restore fallback, is still unverified — no Mac available for this project's development so far. |
-| Unsigned/ad-hoc macOS build drops Accessibility permission on update | Accepted tradeoff (§8). Mitigated by an in-app recovery flow, not eliminated. Revisit paid Apple Developer signing post-launch. |
-| First-run model download | Requires internet on first run; needs resumable/retryable download handling so a flaky connection doesn't strand onboarding. |
-| Gatekeeper/SmartScreen friction | Unsigned installers mean every new user must manually bypass an OS warning. May reduce install completion for less technical users. |
-| `macOSPrivateApi: true` blocks App Store distribution | One-way door, but consistent with the direct-download distribution model already chosen. |
+| Risk / Open Item                                                     | Notes                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parakeet-rs` is a community dependency                              | Not an NVIDIA-official SDK. Best available embeddable ONNX path today; pin the version and monitor for breakage.                                                                                                                                                                                                                                                      |
+| macOS focus/activation behavior untested                             | The Windows overlay uses capture-and-restore (§6.1), not non-activation, after `WS_EX_NOACTIVATE` proved incompatible with reliable click delivery under WRY. Whether `tauri-nspanel`'s non-activating approach works cleanly on macOS, or needs the same capture-and-restore fallback, is still unverified — no Mac available for this project's development so far. |
+| Unsigned/ad-hoc macOS build drops Accessibility permission on update | Accepted tradeoff (§8). Mitigated by an in-app recovery flow, not eliminated. Revisit paid Apple Developer signing post-launch.                                                                                                                                                                                                                                       |
+| First-run model download                                             | Requires internet on first run; needs resumable/retryable download handling so a flaky connection doesn't strand onboarding.                                                                                                                                                                                                                                          |
+| Gatekeeper/SmartScreen friction                                      | Unsigned installers mean every new user must manually bypass an OS warning. May reduce install completion for less technical users.                                                                                                                                                                                                                                   |
+| `macOSPrivateApi: true` blocks App Store distribution                | One-way door, but consistent with the direct-download distribution model already chosen.                                                                                                                                                                                                                                                                              |
 
 ---
 

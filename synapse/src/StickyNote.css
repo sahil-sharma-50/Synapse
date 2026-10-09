@@ -1,222 +1,45 @@
 @import "./theme.css";
 
-/* A single sticky note. Undecorated window, so this file draws the whole
-   thing including its title bar.
- *
- * The colours are deliberately deep and desaturated rather than the highlighter
- * yellows of a paper sticky: these windows float on top of a dark desktop UI
- * all day, and paper-bright surfaces would glare. Each note carries its own ink
- * tinted from its own hue — never gray — so text stays legible on every colour.
- */
-
-html,
-body,
-#root {
-  overflow: hidden;
-}
-
-.note-root {
+.quick-note {
+  --quick-tint: var(--sy-warn-bg);
   display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--note-bg);
-  color: var(--note-ink);
-  font-family: var(--sy-font);
-  font-size: var(--sy-fs-base);
+  flex-direction: column;
   overflow: hidden;
-}
-
-.note-amber {
-  --note-bg: #3a2e12;
-  --note-accent: #f0c46a;
-  --note-ink: #f6e7c6;
-  --note-ink-dim: rgba(246, 231, 198, 0.55);
-}
-
-.note-rose {
-  --note-bg: #3b1d24;
-  --note-accent: #f0879c;
-  --note-ink: #f8dce2;
-  --note-ink-dim: rgba(248, 220, 226, 0.55);
-}
-
-.note-sky {
-  --note-bg: #152b3e;
-  --note-accent: #7cc4f5;
-  --note-ink: #d9ecf9;
-  --note-ink-dim: rgba(217, 236, 249, 0.55);
-}
-
-.note-mint {
-  --note-bg: #16332a;
-  --note-accent: #7fdcaa;
-  --note-ink: #d6f2e3;
-  --note-ink-dim: rgba(214, 242, 227, 0.55);
-}
-
-.note-slate {
-  --note-bg: #24262b;
-  --note-accent: #a9b4c4;
-  --note-ink: #e2e6ec;
-  --note-ink-dim: rgba(226, 230, 236, 0.55);
-}
-
-/* ---- Header (this is the title bar) ---- */
-
-.note-head {
-  display: flex;
-  align-items: center;
-  gap: var(--sy-3);
-  flex-shrink: 0;
-  height: 34px;
-  padding: 0 var(--sy-3) 0 var(--sy-4);
-  background: rgba(0, 0, 0, 0.16);
-  cursor: default;
-}
-
-/* Fills the space between the swatch and the buttons so most of the bar is
-   grabbable, without swallowing clicks meant for the controls. */
-.note-grip {
-  flex: 1;
-  align-self: stretch;
-}
-
-.note-swatch {
-  width: 12px;
-  height: 12px;
-  padding: 0;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--note-accent);
-  cursor: pointer;
-  transition: transform var(--sy-dur-fast) var(--sy-ease-out);
-}
-
-.note-swatch:hover {
-  transform: scale(1.2);
-}
-
-.note-head-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  border-radius: var(--sy-r-sm);
-  background: transparent;
-  color: var(--note-ink-dim);
-  cursor: pointer;
-  transition: background var(--sy-dur-fast) var(--sy-ease-out),
-    color var(--sy-dur-fast) var(--sy-ease-out);
-}
-
-.note-head-btn svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-.note-head-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--note-ink);
-}
-
-/* ---- Colour picker ---- */
-
-.note-colors {
-  display: flex;
-  align-items: center;
-  gap: var(--sy-3);
-  padding: var(--sy-3) var(--sy-4);
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.note-color-dot {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform var(--sy-dur-fast) var(--sy-ease-out);
-}
-
-.note-color-dot:hover {
-  transform: scale(1.15);
-}
-
-.note-color-on {
-  border-color: currentColor;
-}
-
-.note-color-amber {
-  background: #f0c46a;
-}
-.note-color-rose {
-  background: #f0879c;
-}
-.note-color-sky {
-  background: #7cc4f5;
-}
-.note-color-mint {
-  background: #7fdcaa;
-}
-.note-color-slate {
-  background: #a9b4c4;
-}
-
-/* ---- Body ---- */
-
-.note-textarea {
-  flex: 1;
-  width: 100%;
-  padding: var(--sy-5);
-  border: none;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--note-ink);
+  background: color-mix(in srgb, var(--sy-document) 88%, var(--quick-tint));
+  color: var(--sy-text);
   font-family: var(--sy-font);
-  font-size: var(--sy-fs-base);
-  line-height: var(--sy-lh-body);
 }
 
-.note-textarea::placeholder {
-  color: var(--note-ink-dim);
-}
+.quick-note-rose { --quick-tint: var(--sy-danger-bg); }
+.quick-note-sky { --quick-tint: var(--sy-accent-bg); }
+.quick-note-mint { --quick-tint: var(--sy-ok-bg); }
+.quick-note-slate { --quick-tint: var(--sy-hover); }
 
-.note-root * {
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
-}
+.quick-note .window-chrome { background: color-mix(in srgb, var(--sy-glass-strong) 78%, var(--quick-tint)); }
+.quick-note-actions { display: flex; align-items: center; gap: var(--sy-3); min-height: 34px; padding: var(--sy-3) var(--sy-4); border-bottom: 1px solid var(--sy-border); background: color-mix(in srgb, var(--sy-glass) 84%, var(--quick-tint)); }
+.quick-note-actions button { min-height: var(--sy-8); padding: 0 var(--sy-4); border: 0; border-radius: var(--sy-r-sm); background: transparent; color: var(--sy-text-dim); font-size: var(--sy-fs-xs); cursor: pointer; }
+.quick-note-actions button:hover { background: var(--sy-hover); color: var(--sy-text); }
+.quick-note-actions .quick-note-color { width: var(--sy-8); padding: 0; }
+.quick-note-color span { display: block; width: var(--sy-5); height: var(--sy-5); margin: auto; border-radius: 50%; background: var(--quick-tint); box-shadow: inset 0 0 0 1px var(--sy-border-strong); }
+.quick-note-palette { position: absolute; top: calc(var(--sy-titlebar-compact-h) + 34px); left: var(--sy-4); z-index: 80; display: flex; gap: var(--sy-3); padding: var(--sy-4); border-radius: var(--sy-r-md); background: var(--sy-float); box-shadow: var(--sy-shadow-2); }
+.quick-note-palette button { width: var(--sy-7); height: var(--sy-7); border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--sy-border-strong); cursor: pointer; }
+.quick-note-palette .quick-note-color-amber { background: var(--sy-warn-bg); }
+.quick-note-palette .quick-note-color-rose { background: var(--sy-danger-bg); }
+.quick-note-palette .quick-note-color-sky { background: var(--sy-accent-bg); }
+.quick-note-palette .quick-note-color-mint { background: var(--sy-ok-bg); }
+.quick-note-palette .quick-note-color-slate { background: var(--sy-hover); }
+.quick-note-palette .quick-note-color-active { outline: 2px solid var(--sy-accent-solid); outline-offset: var(--sy-2); }
+.quick-note-error { padding: var(--sy-4) var(--sy-6); background: var(--sy-danger-bg); color: var(--sy-danger); font-size: var(--sy-fs-xs); }
+.quick-note-loading { display: grid; width: 100%; height: 100%; place-items: center; background: var(--sy-bg); color: var(--sy-text-faint); font-family: var(--sy-font); }
+.quick-note .rich-note { background: transparent; }
+.quick-note .rich-note-content { max-width: none; }
+.quick-note .rich-status { background: color-mix(in srgb, var(--sy-glass) 84%, var(--quick-tint)); }
 
-/* ---- Linked file ---- */
-
-/* Failures used to be swallowed entirely; this is deliberately loud, since a
-   silent save failure looks identical to a successful one. */
-.note-error {
-  padding: var(--sy-2) var(--sy-5);
-  background: var(--sy-danger-bg);
-  color: var(--sy-danger);
-  font-size: var(--sy-fs-xs);
-  line-height: var(--sy-lh-tight);
-}
-
-/* The note's file link, when it has one. Quiet by default — it is provenance,
-   not an action. The trailing dot is the unsaved marker. */
-.note-file {
-  overflow: hidden;
-  padding: var(--sy-2) var(--sy-5);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--note-ink-dim);
-  font-family: var(--sy-font-mono);
-  font-size: var(--sy-fs-micro);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+@supports not (background: color-mix(in srgb, white, black)) {
+  .quick-note,
+  .quick-note .window-chrome,
+  .quick-note-actions,
+  .quick-note .rich-status { background: var(--sy-document); }
 }

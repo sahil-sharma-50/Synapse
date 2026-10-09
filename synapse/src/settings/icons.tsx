@@ -39,6 +39,41 @@ export function SpeakerIcon() {
   );
 }
 
+export function ControlsIcon() {
+  return (
+    <svg {...common} aria-hidden="true">
+      <path d="M4 7h3m4 0h9M4 17h9m4 0h3" />
+      <circle cx="9" cy="7" r="2" />
+      <circle cx="15" cy="17" r="2" />
+    </svg>
+  );
+}
+
+export function ColorPickerIcon() {
+  return (
+    <svg {...common} aria-hidden="true">
+      <path d="m14 5 5 5M16 7l3-3a2.1 2.1 0 0 1 3 3l-3 3M15 6 4 17v3h3L18 9" />
+    </svg>
+  );
+}
+
+export function LineChartIcon() {
+  return (
+    <svg {...common} aria-hidden="true">
+      <path d="M4 4v16h16M7 15l4-5 4 3 5-7" />
+    </svg>
+  );
+}
+
+export function ChatIcon() {
+  return (
+    <svg {...common} aria-hidden="true">
+      <path d="M20 11.5a8 8 0 0 1-8 8H4l1.5-4a8 8 0 1 1 14.5-4Z" />
+      <path d="M8 10h8M8 14h5" />
+    </svg>
+  );
+}
+
 export function KeyIcon() {
   return (
     <svg {...common}>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Synapse browser</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Synapse <span>Browser companion · 0.1.4</span></h1>
+    </header>
+    <main>
+      <section class="connection" aria-label="Connection status">
+        <div class="status-line">
+          <span id="indicator" aria-hidden="true"></span>
+          <h2 id="status" role="status">Checking connection…</h2>
+        </div>
+        <p id="description">Connecting to the Synapse desktop app.</p>
+        <div class="actions">
+          <button id="reconnect">Reconnect</button
+          ><button id="stop" class="secondary" disabled>Stop task</button>
+        </div>
+      </section>
+      <section id="setup" hidden aria-labelledby="setup-title">
+        <h2 id="setup-title">Connect this extension</h2>
+        <p>Run this command from the Synapse repository folder, then reconnect.</p>
+        <label for="command">PowerShell command</label>
+        <textarea id="command" rows="4" readonly spellcheck="false"></textarea>
+        <button id="copy" class="secondary">Copy setup command</button>
+      </section>
+      <details id="diagnostic" hidden>
+        <summary>Connection details</summary>
+        <p id="error"></p>
+      </details>
+    </main>
+    <footer>
+      Start tasks in Synapse’s AI panel.<br />Enable Chrome control in
+      <strong>Settings → AI</strong>.
+      <p>Emergency stop <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Esc</kbd></p>
+    </footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

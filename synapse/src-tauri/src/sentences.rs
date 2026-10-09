@@ -281,6 +281,24 @@ mod tests {
         assert_eq!(chunks[1], "And then it ran away home.");
     }
 
+    #[test]
+    fn one_shot_text_preserves_sentence_delivery() {
+        let text = "This deliberately long opening sentence contains enough words to make neural speech synthesis noticeably slow before the first sound is ready, even though the rest can be prepared while that first piece is already playing. A second sentence follows.";
+        let chunks = split_all(text);
+        assert_eq!(chunks.len(), 2, "Do not restart the voice mid-sentence");
+        assert!(chunks.iter().all(|chunk| chunk.ends_with('.')));
+        assert_eq!(chunks.join(" "), text);
+    }
+
+    #[test]
+    fn bounded_chunks_preserve_unbroken_unicode_text() {
+        let text = "🙂a".repeat(180);
+        let chunks = split_all(&text);
+
+        assert_eq!(chunks.concat(), text);
+        assert!(chunks[0].chars().count() <= MAX_CHARS);
+    }
+
     /// The streaming half of the problem: a terminator at the very end of the
     /// buffer might be a decimal point whose digits haven't arrived yet.
     #[test]

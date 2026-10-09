@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { WEDGES, wedgePath, iconPosition } from "./wedges";
+import { WEDGES, WHEEL_GEOMETRY, wedgePath, iconPosition } from "./wedges";
+
+it("keeps the launcher compact with enough shadow margin", () => {
+  expect(WHEEL_GEOMETRY).toEqual({ size: 304, outerRadius: 126, innerRadius: 50 });
+  expect(WHEEL_GEOMETRY.size / 2 - WHEEL_GEOMETRY.outerRadius).toBeGreaterThanOrEqual(24);
+});
 
 describe("WEDGES", () => {
   it("has a unique id per wedge", () => {

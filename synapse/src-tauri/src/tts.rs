@@ -52,10 +52,15 @@ fn spawn(text: &str) -> Result<std::process::Child, String> {
 }
 
 /// Speaks and blocks until finished. Call from a background thread.
-pub fn speak(text: &str) -> Result<(), String> {
-    let child = spawn(text)?;
+pub fn speak(text: &str, active: impl Fn() -> bool) -> Result<(), String> {
+    let child_id;
     {
         let mut guard = CHILD.lock().map_err(|_| "tts child lock poisoned")?;
+        if !active() {
+            return Ok(());
+        }
+        let child = spawn(text)?;
+        child_id = child.id();
         // Replacing the previous child here would leak it, so stop first.
         if let Some(mut old) = guard.take() {
             let _ = old.kill();
@@ -70,6 +75,9 @@ pub fn speak(text: &str) -> Result<(), String> {
         let Some(child) = guard.as_mut() else {
             return Ok(()); // stopped from under us
         };
+        if child.id() != child_id {
+            return Ok(());
+        }
         match child.try_wait() {
             Ok(Some(_)) => {
                 *guard = None;

@@ -7,6 +7,12 @@ export interface WedgeDef {
   danger?: boolean; // true for destructive actions — hover fills red instead of blue
 }
 
+export const WHEEL_GEOMETRY = {
+  size: 304,
+  outerRadius: 126,
+  innerRadius: 50,
+} as const;
+
 // Order matches PRD §4.2 — a single flat ring, clockwise from the top.
 export const WEDGES: WedgeDef[] = [
   {

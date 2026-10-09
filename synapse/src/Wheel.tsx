@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { WEDGES, WedgeId, wedgePath, iconPosition } from "./wedges";
+import { WEDGES, WHEEL_GEOMETRY, WedgeId, wedgePath, iconPosition } from "./wedges";
+import type { Settings } from "./models";
 import "./App.css";
 
-// Keep SIZE in sync with OVERLAY_SIZE in src-tauri/src/lib.rs.
-// R_OUTER is deliberately well inside SIZE/2 so the drop-shadow has room to
-// fade out inside the window instead of clipping into a visible box.
-const SIZE = 360;
+const { size: SIZE, outerRadius: R_OUTER, innerRadius: R_INNER } = WHEEL_GEOMETRY;
 const CENTER = SIZE / 2;
-const R_OUTER = 150;
-const R_INNER = 58;
 const R_ICON = (R_OUTER + R_INNER) / 2;
 
 /// Pointer travel, in px, before a press on the hub becomes a drag instead of
@@ -27,7 +23,7 @@ const LEVEL_BARS = 5;
 /// anything above this is shouting and just pins the meter.
 const LEVEL_CEILING = 0.22;
 
-type Mode = "menu" | "listening" | "error" | "toast";
+type Mode = "menu" | "listening" | "speaking" | "error" | "speech-error" | "toast";
 
 interface Toast {
   title: string;
@@ -45,17 +41,21 @@ interface DictationTick {
 /// Shared circular panel for the overlay's non-menu states, so the icon and
 /// text stack inside one circle instead of overlapping as separately-centred
 /// absolute elements.
-function StatusCircle({
+export function StatusCircle({
   title,
   detail,
   tone,
   onClick,
+  actionLabel,
+  onAction,
   children,
 }: {
   title: string;
   detail?: React.ReactNode;
   tone?: "error";
   onClick?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   children?: React.ReactNode;
 }) {
   return (
@@ -63,10 +63,28 @@ function StatusCircle({
       <div
         className={`status-circle${tone === "error" ? " status-circle-error" : ""}${onClick ? " status-clickable" : ""}`}
         onClick={onClick}
+        role={onClick ? "button" : "status"}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={
+          onClick
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onClick();
+                }
+              }
+            : undefined
+        }
       >
         {children}
         <span className="status-title">{title}</span>
         {detail && <span className="status-detail">{detail}</span>}
+        {actionLabel && onAction && (
+          <button className="status-stop-button" onClick={onAction} autoFocus>
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -83,7 +101,11 @@ function LevelMeter({ level, active }: { level: number; active: boolean }) {
         <span
           key={i}
           className="level-bar"
-          style={active ? { height: `${5 + norm * weights[i] * 28}px` } : undefined}
+          style={
+            active
+              ? ({ "--level-scale": (5 + norm * weights[i] * 28) / 34 } as React.CSSProperties)
+              : undefined
+          }
         />
       ))}
     </div>
@@ -96,6 +118,9 @@ function formatElapsed(ms: number): string {
 }
 
 export default function Wheel() {
+  const [wheelSize, setWheelSize] = useState(100);
+  const [wheelTools, setWheelTools] = useState<WedgeId[]>(WEDGES.map((tool) => tool.id));
+  const visibleWedges = WEDGES.filter((tool) => wheelTools.includes(tool.id));
   const [hovered, setHovered] = useState<WedgeId | null>(null);
   const [mode, setMode] = useState<Mode>("menu");
   const [error, setError] = useState("");
@@ -108,6 +133,29 @@ export default function Wheel() {
   // be set by the time the click handler might run.
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const dragged = useRef(false);
+  const selectedSpeechPending = useRef(false);
+  const speechGeneration = useRef<number | null>(null);
+
+  useEffect(() => {
+    const apply = (settings: Settings) => {
+      setWheelTools(settings.appearance.wheel_tools);
+      setWheelSize(settings.appearance.wheel_size);
+    };
+    const unlisten = listen<Settings>("settings-changed", (event) => apply(event.payload));
+    invoke<Settings>("get_settings")
+      .then(apply)
+      .catch(() => {});
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  function stopSelectedSpeech() {
+    selectedSpeechPending.current = false;
+    speechGeneration.current = null;
+    setMode("menu");
+    void invoke("stop_speaking").then(() => invoke("dismiss_overlay"));
+  }
 
   function endPress() {
     pressOrigin.current = null;
@@ -126,6 +174,7 @@ export default function Wheel() {
       // While recording, Esc stops the capture; the backend then tears the
       // overlay down itself once it has finished.
       if (mode === "listening") invoke("stop_dictation");
+      else if (mode === "speaking") stopSelectedSpeech();
       else invoke("dismiss_overlay");
     };
     window.addEventListener("keydown", onKey);
@@ -136,6 +185,10 @@ export default function Wheel() {
     // The webview persists across window show/hide, so mode must be reset
     // explicitly by the Rust side rather than relying on component remount.
     const unlistenShown = listen("wheel-shown", () => {
+      if (selectedSpeechPending.current) {
+        setMode("speaking");
+        return;
+      }
       setError("");
       setTick(null);
       // A drag flag left set by an interrupted gesture would silently eat the
@@ -154,8 +207,35 @@ export default function Wheel() {
       setMode("error");
     });
     const unlistenToast = listen<Toast>("toast", (e) => {
+      selectedSpeechPending.current = false;
       setToast(e.payload);
+      setError("");
       setMode("toast");
+    });
+    const unlistenSelected = listen("selected-speech-requested", () => {
+      selectedSpeechPending.current = true;
+      speechGeneration.current = null;
+    });
+    const unlistenRequested = listen<number>("tts-requested", (event) => {
+      if (selectedSpeechPending.current) speechGeneration.current = event.payload;
+    });
+    const unlistenSpeechStarted = listen<number>("tts-started", (event) => {
+      if (!selectedSpeechPending.current || speechGeneration.current !== event.payload) return;
+      setMode("speaking");
+      invoke("show_speech_controls");
+    });
+    const unlistenSpeechEnded = listen<number>("tts-ended", (event) => {
+      if (!selectedSpeechPending.current || speechGeneration.current !== event.payload) return;
+      selectedSpeechPending.current = false;
+      invoke("dismiss_overlay");
+    });
+    const unlistenSpeechError = listen<string>("tts-error", (e) => {
+      if (!selectedSpeechPending.current) return;
+      invoke("stop_speaking");
+      selectedSpeechPending.current = false;
+      setError(e.payload);
+      setMode("speech-error");
+      invoke("show_speech_controls");
     });
 
     return () => {
@@ -164,6 +244,11 @@ export default function Wheel() {
       unlistenTick.then((f) => f());
       unlistenError.then((f) => f());
       unlistenToast.then((f) => f());
+      unlistenSelected.then((f) => f());
+      unlistenRequested.then((f) => f());
+      unlistenSpeechStarted.then((f) => f());
+      unlistenSpeechEnded.then((f) => f());
+      unlistenSpeechError.then((f) => f());
     };
   }, []);
 
@@ -174,6 +259,10 @@ export default function Wheel() {
     } else if (id === "quit") {
       invoke("force_quit"); // no confirmation, no toast — the process ends immediately
     } else {
+      if (id === "speak-selected") {
+        selectedSpeechPending.current = true;
+        speechGeneration.current = null;
+      }
       invoke("select_wedge", { wedge: id });
     }
   }
@@ -191,7 +280,7 @@ export default function Wheel() {
             <span className="status-timer">{formatElapsed(tick?.elapsed_ms ?? 0)}</span>
             <br />
             {quietTooLong ? (
-              <span className="status-warn">Not hearing anything — check your microphone</span>
+              <span className="status-warn">Not hearing anything. Check your microphone.</span>
             ) : (
               "enter or click to stop"
             )}
@@ -204,28 +293,53 @@ export default function Wheel() {
     );
   }
 
+  if (mode === "speaking") {
+    return (
+      <StatusCircle
+        title="Speaking…"
+        detail="Press Esc or use the button to interrupt"
+        actionLabel="Stop speaking"
+        onAction={stopSelectedSpeech}
+      >
+        <svg viewBox="0 0 24 24" className="status-speaking-icon" aria-hidden="true">
+          <path d="M4 10v4h4l5 4V6l-5 4H4Zm12.5 2a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12Z" />
+        </svg>
+      </StatusCircle>
+    );
+  }
+
   if (mode === "toast" && toast) {
-    const reveal = () => {
-      if (toast.path) invoke("reveal_path", { path: toast.path });
-      invoke("dismiss_overlay");
+    const reveal = async () => {
+      try {
+        if (toast.path) await invoke("reveal_path", { path: toast.path });
+        await invoke("dismiss_overlay");
+      } catch (cause) {
+        setError(String(cause));
+      }
     };
     return (
       <StatusCircle
         title={toast.title}
         tone={toast.tone === "error" ? "error" : undefined}
-        onClick={reveal}
+        onClick={toast.path ? () => void reveal() : undefined}
         detail={
           <>
-            <span className="status-path">{toast.detail}</span>
-            {toast.path && <span className="status-action">Click to open</span>}
+            <span className="status-path" title={toast.path || toast.detail}>
+              {toast.detail}
+            </span>
+            {error ? (
+              <span className="status-warn" role="alert">
+                {error}
+              </span>
+            ) : (
+              toast.path && <span className="status-action">Click to open folder</span>
+            )}
           </>
         }
       >
-        {toast.tone === "ok" && (
-          <svg viewBox="0 0 24 24" className="status-check">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        )}
+        <svg className="status-check" viewBox="0 0 24 24" aria-hidden="true">
+          <path d={toast.tone === "ok" ? "m5 12 4 4L19 6" : "m7 7 10 10M17 7 7 17"} />
+        </svg>
       </StatusCircle>
     );
   }
@@ -234,29 +348,51 @@ export default function Wheel() {
     return <StatusCircle title="Dictation failed" detail={error} tone="error" />;
   }
 
+  if (mode === "speech-error") {
+    return <StatusCircle title="Speech failed" detail={error} tone="error" />;
+  }
+
   return (
-    <div className="overlay-root" onClick={(e) => { if (e.target === e.currentTarget) invoke("dismiss_overlay"); }}>
+    <div
+      className="overlay-root"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) invoke("dismiss_overlay");
+      }}
+    >
       <svg
-        width={SIZE}
-        height={SIZE}
+        width={(SIZE * wheelSize) / 100}
+        height={(SIZE * wheelSize) / 100}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => { if (e.target === e.currentTarget) invoke("dismiss_overlay"); }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) invoke("dismiss_overlay");
+        }}
       >
-        {WEDGES.map((wedge, i) => {
-          const d = wedgePath(i, WEDGES.length, CENTER, CENTER, R_OUTER, R_INNER);
-          const { x, y } = iconPosition(i, WEDGES.length, CENTER, CENTER, R_ICON);
+        {visibleWedges.map((wedge, i) => {
+          const d = wedgePath(i, visibleWedges.length, CENTER, CENTER, R_OUTER, R_INNER);
+          const { x, y } = iconPosition(i, visibleWedges.length, CENTER, CENTER, R_ICON);
           const isHovered = hovered === wedge.id;
           return (
             <g
               key={wedge.id}
               className={`wedge${wedge.danger ? " wedge-danger" : ""}${isHovered ? " wedge-hovered" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={wedge.label}
               onMouseEnter={() => setHovered(wedge.id)}
               onMouseLeave={() => setHovered((h) => (h === wedge.id ? null : h))}
               onClick={() => selectWedge(wedge.id)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                selectWedge(wedge.id);
+              }}
             >
               <path d={d} className="wedge-slice" />
-              <g transform={`translate(${x - 12} ${y - 12})`} className="wedge-icon">
+              <g
+                transform={`translate(${x - 10} ${y - 10}) scale(${20 / 24})`}
+                className="wedge-icon"
+              >
                 <path d={wedge.icon} />
               </g>
             </g>
@@ -307,9 +443,11 @@ export default function Wheel() {
         />
       </svg>
 
-      <div className="hub-label">
-        <span className="hub-title">{hoveredWedge ? hoveredWedge.label : "Pick an action"}</span>
-        <span className="hub-hint">drag to move · esc to close</span>
+      <div className="hub-label" style={{ transform: `scale(${wheelSize / 100})` }}>
+        <span className="wheel-hub-title">
+          {hoveredWedge ? hoveredWedge.label : "Pick an action"}
+        </span>
+        <span className="wheel-hub-hint">drag to move · esc to close</span>
       </div>
     </div>
   );
