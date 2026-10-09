@@ -4,6 +4,7 @@ export type Provider = "anthropic" | "openai" | "openrouter";
 
 export interface AiSettings {
   hybrid?: boolean;
+  browser_control?: boolean;
   daily_budget?: number;
   custom_greetings: string;
   provider: Provider;
@@ -12,6 +13,8 @@ export interface AiSettings {
   openrouter_model: string;
   speak_replies: boolean;
   typing_mode: boolean;
+  voice_address_required: boolean;
+  voice_prefix: string;
   enter_to_send: boolean;
 }
 

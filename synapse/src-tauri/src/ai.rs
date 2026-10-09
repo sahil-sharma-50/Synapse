@@ -101,6 +101,26 @@ pub fn stream_chat(
     on_delta: &mut dyn FnMut(&str),
     cancelled: &dyn Fn() -> bool,
 ) -> Result<String, String> {
+    stream_chat_with_timeout(
+        app,
+        provider,
+        model,
+        messages,
+        on_delta,
+        cancelled,
+        std::time::Duration::from_secs(120),
+    )
+}
+
+pub(crate) fn stream_chat_with_timeout(
+    app: &tauri::AppHandle,
+    provider: Provider,
+    model: &str,
+    messages: &[(String, String)],
+    on_delta: &mut dyn FnMut(&str),
+    cancelled: &dyn Fn() -> bool,
+    timeout: std::time::Duration,
+) -> Result<String, String> {
     if cancelled() {
         return Err("Conversation closed".into());
     }
@@ -122,7 +142,7 @@ pub fn stream_chat(
         false,
     )?;
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(timeout)
         .build()
         .map_err(|e| e.to_string())?;
 

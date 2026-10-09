@@ -2,7 +2,16 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for all Synapse windows. Sticky notes are created at runtime, one window per note, hence the note-* glob (Tauri matches this field with glob::Pattern; note ids are hex-only so none can contain a metacharacter). 'notes-hub' deliberately does NOT match 'note-*' - it is 'notes-', one character away from colliding. Window labels here must stay in step with the consts in src/lib.rs: renaming one without the other silently kills all IPC in that window.",
-  "windows": ["overlay", "notes-hub", "note-*", "clipboard", "ai-panel", "settings", "onboarding"],
+  "windows": [
+    "overlay",
+    "notes-hub",
+    "note-*",
+    "clipboard",
+    "ai-panel",
+    "settings",
+    "onboarding",
+    "workflows"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -13,7 +22,11 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "ms-settings:*" }]
+      "allow": [
+        {
+          "url": "ms-settings:*"
+        }
+      ]
     },
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",

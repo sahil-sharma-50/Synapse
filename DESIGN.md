@@ -97,6 +97,11 @@ missing; add it centrally.
   thinking, speaking, idle, and error states need distinct motion or text; colour
   alone cannot carry status. The transcript stays visually quiet so the current
   task remains clear.
+  Desktop results use a compact panel: the orb shrinks into the status header,
+  result rows lead with the item name and Open action. No input-mode toggle or
+  details disclosure appears on the orb; partial searches retain a quiet label.
+  The native window follows content height, bounded
+  to 180–520 logical pixels; long result lists scroll within it.
 
 ## UI review checklist
 

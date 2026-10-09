@@ -1,0 +1,704 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="color-scheme" content="light" />
+    <title>Synapse — Lilac</title>
+    <link rel="stylesheet" href="./product-tour.css" />
+    <script src="./product-tour.js" defer></script>
+    <style>
+      @font-face {
+        font-family: Manrope;
+        src: url("../assets/manrope.woff2") format("woff2");
+        font-weight: 200 800;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: Literata;
+        src: url("../assets/literata.woff2") format("woff2");
+        font-weight: 200 900;
+        font-display: swap;
+      }
+      :root {
+        --ink: #35283e;
+        --muted: #65576e;
+        --lilac: #e9e0f0;
+        --paper: #f8f3ec;
+        --line: #cec0d7;
+        --accent: #684185;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 32px;
+      }
+      body {
+        margin: 0;
+        background: var(--lilac);
+        color: var(--ink);
+        font:
+          15px/1.75 Manrope,
+          sans-serif;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      figure {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        text-wrap: balance;
+      }
+      h1 {
+        max-width: 460px;
+        font-size: clamp(36px, 4.2vw, 48px);
+        line-height: 1.13;
+        letter-spacing: -0.055em;
+        font-weight: 700;
+      }
+      h2 {
+        font-size: clamp(28px, 3.4vw, 40px);
+        line-height: 1.2;
+        letter-spacing: -0.04em;
+        font-weight: 600;
+      }
+      h3 {
+        font-size: 17px;
+        line-height: 1.4;
+        font-weight: 700;
+      }
+      p {
+        text-wrap: pretty;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      a,
+      button {
+        touch-action: manipulation;
+      }
+      a:focus-visible,
+      button:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 5px;
+      }
+      .wrap {
+        width: min(1120px, calc(100% - 2 * clamp(24px, 7vw, 112px)));
+        margin-inline: auto;
+      }
+      .skip {
+        position: absolute;
+        top: -100px;
+        left: 24px;
+        padding: 12px 20px;
+        background: var(--ink);
+        color: white;
+        z-index: 20;
+      }
+      .skip:focus {
+        top: 16px;
+      }
+      .site-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding-block: 26px;
+      }
+      .brand {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        gap: 10px;
+        font-size: 22px;
+        font-weight: 750;
+        letter-spacing: -0.04em;
+      }
+      .brand img {
+        width: 34px;
+        height: 34px;
+      }
+      .site-nav {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #f5edf8;
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        padding: 5px;
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .site-nav a {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        padding-inline: 17px;
+        border-radius: 99px;
+      }
+      .site-nav a:hover {
+        background: #e2d4ec;
+      }
+      .site-nav .nav-download {
+        background: var(--ink);
+        color: white;
+      }
+      .site-nav .nav-download:hover {
+        background: #584064;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr 1.05fr;
+        align-items: center;
+        gap: 40px;
+        padding-block: 78px 72px;
+      }
+      .hero-copy > p {
+        max-width: 400px;
+        margin-top: 24px;
+        font-size: 16px;
+        color: var(--muted);
+        line-height: 1.85;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 29px;
+      }
+      .button {
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 11px 21px;
+        border: 1px solid var(--ink);
+        border-radius: 99px;
+        background: var(--ink);
+        color: white;
+        font-size: 13px;
+        font-weight: 700;
+        transition: background 0.18s;
+      }
+      .button:hover {
+        background: #584064;
+      }
+      .button.secondary {
+        color: var(--ink);
+        background: transparent;
+      }
+      .button.secondary:hover {
+        background: #dacce5;
+      }
+      .hero-copy .fine {
+        margin-top: 16px;
+        font-size: 12px;
+      }
+      .hero-stage {
+        min-width: 0;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1/1.04;
+        border-radius: 44% 44% 16px 16px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #b6a3c7;
+      }
+      .hero-stage::before {
+        content: "";
+        position: absolute;
+        inset: -30px;
+        z-index: -2;
+        background: url("../assets/synapse-overview.png") center/cover;
+        filter: blur(14px);
+        opacity: 0.5;
+      }
+      .hero-stage::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: linear-gradient(145deg, #f1cbb57a, #b194c970 65%, #e9e0f0);
+      }
+      .hero-stage [data-wheel-art] {
+        width: min(100%, 420px);
+        padding: 22px;
+      }
+      .hero-stage figcaption {
+        position: absolute;
+        bottom: 18px;
+        left: 12px;
+        right: 12px;
+        text-align: center;
+        font-size: 12px;
+        color: #34283e;
+      }
+      .shortcut {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding-block: 23px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .keys {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      kbd {
+        display: inline-flex;
+        min-width: 39px;
+        height: 34px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #b9a9c4;
+        border-bottom-width: 3px;
+        border-radius: 7px;
+        padding-inline: 9px;
+        background: #f4edf8;
+        color: var(--ink);
+        font:
+          12px Manrope,
+          sans-serif;
+      }
+      .workflow {
+        padding-block: 92px 84px;
+      }
+      .section-intro {
+        display: grid;
+        grid-template-columns: 1fr 0.9fr;
+        gap: 70px;
+        align-items: end;
+        margin-bottom: 34px;
+      }
+      .section-intro p,
+      .feature-copy p {
+        color: var(--muted);
+      }
+      .shot a {
+        display: block;
+        min-height: 44px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #19191c;
+      }
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+      }
+      figcaption {
+        margin-top: 13px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 32px;
+        margin-top: 42px;
+        padding: 0;
+        list-style: none;
+        counter-reset: steps;
+      }
+      .steps li {
+        counter-increment: steps;
+        padding-top: 17px;
+        border-top: 1px solid var(--line);
+      }
+      .steps h3::before {
+        content: "0" counter(steps);
+        display: block;
+        color: var(--accent);
+        margin-bottom: 12px;
+        font-size: 12px;
+      }
+      .steps p {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .details {
+        background: var(--paper);
+        padding-block: 82px;
+      }
+      .details h2 {
+        font-family: Literata, Georgia, serif;
+        font-weight: 450;
+        font-size: clamp(29px, 3.3vw, 39px);
+      }
+      .feature {
+        display: grid;
+        grid-template-columns: 0.65fr 1.35fr;
+        gap: 50px;
+        align-items: center;
+      }
+      .feature + .feature {
+        grid-template-columns: 1.35fr 0.65fr;
+        padding-top: 66px;
+        margin-top: 66px;
+        border-top: 1px solid #d7cfc6;
+      }
+      .feature-copy p {
+        margin-top: 19px;
+        font-size: 14px;
+      }
+      .feature-copy .detail-note {
+        font-size: 12px;
+      }
+      .download {
+        padding-block: 89px 77px;
+        display: grid;
+        grid-template-columns: 1fr 0.8fr;
+        gap: 70px;
+        align-items: start;
+      }
+      .download p {
+        color: var(--muted);
+        margin-top: 20px;
+        font-size: 14px;
+      }
+      .download .button {
+        margin-top: 25px;
+      }
+      .release-notes {
+        border-left: 1px solid var(--line);
+        padding-left: 35px;
+      }
+      .release-notes p:first-child {
+        margin-top: 0;
+      }
+      .footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding-block: 20px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .footer nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+      }
+      .footer a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+      }
+      .footer a:hover {
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+      @media (max-width: 900px) {
+        .hero {
+          gap: 20px;
+          padding-top: 45px;
+        }
+        .hero-stage [data-wheel-art] {
+          padding: 10px;
+        }
+        .hero-stage figcaption {
+          bottom: 10px;
+          font-size: 10px;
+        }
+        .section-intro {
+          gap: 32px;
+        }
+        .feature,
+        .feature + .feature {
+          grid-template-columns: 1fr;
+          gap: 28px;
+        }
+        .feature-copy {
+          max-width: 640px;
+        }
+        .feature + .feature .feature-copy {
+          grid-row: 1;
+        }
+      }
+      @media (max-width: 680px) {
+        .site-header {
+          flex-wrap: wrap;
+          gap: 14px;
+          padding-block: 18px;
+        }
+        .site-nav {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .site-nav a {
+          padding-inline: 10px;
+          font-size: 11px;
+        }
+        .hero {
+          grid-template-columns: 1fr;
+          padding-block: 42px 30px;
+          gap: 36px;
+        }
+        .hero-stage {
+          width: 100%;
+          max-width: 440px;
+          margin-inline: auto;
+        }
+        .hero-stage [data-wheel-art] {
+          padding: 22px;
+        }
+        .hero-stage figcaption {
+          bottom: 17px;
+          font-size: 12px;
+        }
+        .shortcut {
+          justify-content: center;
+          text-align: center;
+        }
+        .workflow,
+        .details {
+          padding-block: 55px;
+        }
+        .section-intro,
+        .download {
+          grid-template-columns: 1fr;
+          gap: 22px;
+        }
+        .steps {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        .steps h3::before {
+          display: inline;
+          margin-right: 12px;
+        }
+        .feature + .feature {
+          margin-top: 40px;
+          padding-top: 40px;
+        }
+        .download {
+          padding-block: 55px;
+          gap: 32px;
+        }
+        .release-notes {
+          padding: 25px 0 0;
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="#main" aria-label="Synapse home"
+        ><img src="../assets/synapse-icon.png" width="34" height="34" alt="" />Synapse</a
+      >
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a><a href="#screenshots">Inside Synapse</a
+        ><a class="nav-download" href="#download">Download</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <h1 id="hero-title">A shortcut to what comes next.</h1>
+          <p>
+            Speak a thought. Save a useful detail. Pick up where you left off. Your everyday tools,
+            one shortcut away on Windows.
+          </p>
+          <div class="actions">
+            <a class="button" href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
+              >Download for Windows</a
+            ><button class="button secondary" type="button" data-open-tour>Open the wheel</button>
+          </div>
+          <p class="fine">Windows x64 · Open the wheel to explore all eight tools.</p>
+        </div>
+        <figure class="hero-stage" aria-label="Preview of the Synapse radial menu">
+          <div data-wheel-art></div>
+          <figcaption>The Synapse wheel, at the heart of your desktop.</figcaption>
+        </figure>
+      </section>
+      <div class="shortcut wrap">
+        <span>A small pause. Everything within reach.</span
+        ><span class="keys"
+          ><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Enter</kbd
+          ><span>to open at your cursor</span></span
+        >
+      </div>
+      <section class="workflow wrap" id="how-it-works" aria-labelledby="workflow-title">
+        <div class="section-intro">
+          <h2 id="workflow-title">From a thought<br />to the place it belongs.</h2>
+          <p>
+            The wheel brings eight tools to your cursor. Choose Speech-to-Text when typing would
+            interrupt your flow, then keep working in the app you already have open.
+          </p>
+        </div>
+        <figure class="shot" id="screenshots">
+          <a
+            href="../assets/synapse-overview.png"
+            data-zoom
+            aria-label="Enlarge the Synapse application overview"
+            ><img
+              src="../assets/synapse-overview.png"
+              width="1774"
+              height="887"
+              alt="Actual Synapse application overview showing its radial wheel and utility windows"
+              loading="lazy"
+          /></a>
+          <figcaption>
+            A real look inside Synapse. Select any screenshot to see the full image.
+          </figcaption>
+        </figure>
+        <ol class="steps">
+          <li>
+            <h3>Call up the wheel</h3>
+            <p>
+              Press Ctrl+Alt+Enter, then choose Speech-to-Text. The wheel opens where your cursor
+              is.
+            </p>
+          </li>
+          <li>
+            <h3>Say what you mean</h3>
+            <p>
+              Dictation keeps listening until you press Enter or click the listening circle. Pauses
+              do not end it by default.
+            </p>
+          </li>
+          <li>
+            <h3>Carry on from there</h3>
+            <p>
+              Synapse pastes the finished text into the previously focused app. Your words go back
+              to where you were working.
+            </p>
+          </li>
+        </ol>
+      </section>
+      <section class="details" aria-label="Personalization and usage">
+        <div class="wrap">
+          <div class="feature">
+            <div class="feature-copy">
+              <h2>A little more<br />your own.</h2>
+              <p>
+                Adjust the wheel’s colors and size, and choose the tools you want on it. These are
+                the actual controls inside Synapse.
+              </p>
+              <p>
+                Keep rich notes in folders or open them as sticky notes. Search your clipboard
+                history, pin a useful item, and paste it when you need it. Notes and clipboard
+                history stay local.
+              </p>
+            </div>
+            <figure class="shot">
+              <a
+                href="../assets/customization_options.png"
+                data-zoom
+                aria-label="Enlarge the Synapse wheel customization screenshot"
+                ><img
+                  src="../assets/customization_options.png"
+                  width="1536"
+                  height="1024"
+                  alt="Synapse settings with wheel appearance and customization options"
+                  loading="lazy"
+              /></a>
+              <figcaption>
+                Wheel customization in the app: colors, size, and available tools.
+              </figcaption>
+            </figure>
+          </div>
+          <div class="feature">
+            <figure class="shot">
+              <a
+                href="../assets/usuage_stats.png"
+                data-zoom
+                aria-label="Enlarge the Synapse usage statistics screenshot"
+                ><img
+                  src="../assets/usuage_stats.png"
+                  width="1536"
+                  height="1024"
+                  alt="Synapse usage screen showing locally recorded AI requests, tokens, and estimated costs"
+                  loading="lazy"
+              /></a>
+              <figcaption>
+                Local usage records. The values pictured are example usage, not product prices or a
+                provider bill.
+              </figcaption>
+            </figure>
+            <div class="feature-copy">
+              <h2>Your provider.<br />A clearer view.</h2>
+              <p>
+                AI opens a voice orb and streams replies through your chosen provider: Anthropic,
+                OpenAI, or OpenRouter. Connect your own API key; provider charges are separate.
+              </p>
+              <p>See locally recorded requests, token counts, and estimated costs in Usage.</p>
+              <p class="detail-note">
+                For dictation, an optional local speech recognition model is approximately 630 MB.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="download wrap" id="download" aria-labelledby="download-title">
+        <div>
+          <h2 id="download-title">Make room for<br />your next thought.</h2>
+          <p>Get the current Windows x64 release of Synapse.</p>
+          <a class="button" href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
+            >Download for Windows</a
+          >
+        </div>
+        <div class="release-notes">
+          <p>
+            One shortcut brings together dictation, AI, screenshots, clipboard history, notes,
+            speech, settings, and Force Quit.
+          </p>
+          <p>
+            A paid release is planned as one purchase per major version, with optional paid upgrades
+            for future major versions. Pricing, paid features, and the release date are not
+            announced.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer class="footer wrap">
+      <span>Synapse · Lilac design</span>
+      <nav aria-label="Other design choices">
+        <a href="./index.html">Compare designs</a><a href="./carbon.html">Cobalt</a
+        ><a href="./midnight.html">Dusk</a>
+      </nav>
+    </footer>
+  </body>
+</html>

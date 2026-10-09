@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="color-scheme" content="dark" />
+    <title>Choose a Synapse design</title>
+    <style>
+      @font-face {
+        font-family: Manrope;
+        src: url("../assets/manrope.woff2") format("woff2");
+        font-weight: 200 800;
+        font-display: swap;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #111218;
+        color: #eeeff6;
+        font:
+          16px/1.6 Manrope,
+          sans-serif;
+      }
+      a {
+        color: inherit;
+      }
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+      a:focus-visible {
+        outline: 2px solid #a9baff;
+        outline-offset: 5px;
+      }
+      .wrap {
+        width: min(1100px, calc(100% - 2 * clamp(24px, 7vw, 112px)));
+        margin: auto;
+      }
+      header {
+        height: 88px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #2a2c36;
+      }
+      .logo {
+        font-size: 24px;
+        font-weight: 650;
+        letter-spacing: -0.04em;
+        text-decoration: none;
+      }
+      .logo span {
+        color: #a4b6ff;
+      }
+      header p {
+        font-size: 13px;
+        color: #a1a5b8;
+      }
+      .intro {
+        padding: 58px 0 34px;
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 40px;
+      }
+      h1 {
+        font-size: 38px;
+        line-height: 1.15;
+        font-weight: 550;
+        letter-spacing: -0.03em;
+        margin: 0;
+      }
+      p {
+        margin: 0;
+        color: #aaafc2;
+      }
+      .intro p {
+        max-width: 420px;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 22px;
+        padding-bottom: 42px;
+      }
+      article {
+        min-width: 0;
+        background: #191b24;
+        border: 1px solid #303340;
+        border-radius: 14px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.2s;
+      }
+      article:hover {
+        border-color: #70768e;
+      }
+      .preview {
+        display: block;
+        overflow: hidden;
+        aspect-ratio: 1.44;
+        background: var(--cover);
+      }
+      .preview img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top;
+        transition: transform 0.35s ease-out;
+      }
+      .preview:hover img {
+        transform: scale(1.025);
+      }
+      .content {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+      }
+      .title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      h2 {
+        font-weight: 550;
+        font-size: 23px;
+        letter-spacing: -0.03em;
+        margin: 0;
+        line-height: 1.2;
+      }
+      .swatches {
+        display: flex;
+        gap: 4px;
+      }
+      .swatches i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--swatch);
+      }
+      .description {
+        font-size: 14px;
+        min-height: 70px;
+        color: #b5bacb;
+      }
+      ul {
+        padding: 18px 0;
+        margin: 0;
+        list-style: none;
+        border-bottom: 1px solid #303340;
+        flex: 1;
+      }
+      li {
+        font-size: 13px;
+        color: #c7cbd8;
+        margin-block: 5px;
+      }
+      .open {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+        margin-top: 20px;
+        padding: 10px 14px;
+        border-radius: 7px;
+        min-height: 44px;
+        background: var(--accent);
+        color: var(--ink);
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .open svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+      }
+      footer {
+        border-top: 1px solid #2a2c36;
+        padding: 24px 0 40px;
+        display: flex;
+        justify-content: space-between;
+        gap: 30px;
+        font-size: 13px;
+      }
+      footer p {
+        max-width: 500px;
+      }
+      footer a {
+        color: #c6ceee;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      @media (max-width: 1000px) {
+        .grid {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        article {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+        .preview {
+          aspect-ratio: auto;
+          height: 100%;
+          min-height: 320px;
+        }
+        .intro {
+          align-items: start;
+          flex-direction: column;
+          gap: 18px;
+        }
+        .intro p {
+          max-width: 620px;
+        }
+        .description {
+          min-height: 0;
+        }
+        .content {
+          padding: 26px;
+        }
+      }
+      @media (max-width: 600px) {
+        header {
+          height: 74px;
+        }
+        header p {
+          font-size: 12px;
+        }
+        .intro {
+          padding: 38px 0 26px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        .intro p {
+          font-size: 15px;
+        }
+        article {
+          display: flex;
+        }
+        .preview {
+          aspect-ratio: 1.4;
+          min-height: 0;
+          height: auto;
+        }
+        .content {
+          padding: 23px;
+        }
+        footer {
+          flex-direction: column;
+          gap: 14px;
+        }
+        h2 {
+          font-size: 24px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="wrap">
+      <a class="logo" href="./index.html">synapse<span>.</span></a>
+      <p>Three interactive design previews</p>
+    </header>
+    <main class="wrap">
+      <div class="intro">
+        <h1>Your favorite parts. Three new directions.</h1>
+        <p>
+          The header, headline, and wheel preview you chose—combined with real Synapse screens. Open
+          a page, explore the tools, and enlarge the screenshots.
+        </p>
+      </div>
+      <div class="grid">
+        <article style="--accent: #aac2ff; --ink: #15213b; --cover: #0c1425">
+          <a class="preview" href="./midnight.html" aria-label="Explore Dusk"
+            ><img
+              src="./previews/midnight.png"
+              width="1440"
+              height="1000"
+              alt="Dusk landing page preview"
+          /></a>
+          <div class="content">
+            <div class="title">
+              <h2>Dusk</h2>
+              <span class="swatches" aria-hidden="true"
+                ><i style="--swatch: #1c2c4c"></i><i style="--swatch: #739cff"></i
+                ><i style="--swatch: #c5d7ff"></i
+              ></span>
+            </div>
+            <p class="description">
+              Dark ink and apricot, with the Synapse wheel at the center and real app screens
+              throughout.
+            </p>
+            <ul>
+              <li>Rounded header and two clear hero actions</li>
+              <li>Source-based wheel feature guide</li>
+              <li>Full-size app screenshots to explore</li>
+            </ul>
+            <a class="open" href="./midnight.html"
+              >Explore Dusk
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg
+            ></a>
+          </div>
+        </article>
+        <article style="--accent: #b8c8ff; --ink: #101e4f; --cover: #142f84">
+          <a class="preview" href="./carbon.html" aria-label="Explore Cobalt"
+            ><img
+              src="./previews/carbon.png"
+              width="1440"
+              height="1000"
+              alt="Cobalt landing page preview"
+          /></a>
+          <div class="content">
+            <div class="title">
+              <h2>Cobalt</h2>
+              <span class="swatches" aria-hidden="true"
+                ><i style="--swatch: #204be1"></i><i style="--swatch: #b8c8ff"></i
+                ><i style="--swatch: #ecac84"></i
+              ></span>
+            </div>
+            <p class="description">
+              The selected direction, refined: a compact fixed header, interactive wheel, and a
+              detailed look at the actual app.
+            </p>
+            <ul>
+              <li>Fixed navigation and cobalt hero</li>
+              <li>Accurate dictation and tool explanations</li>
+              <li>Appearance and usage screens with zoom</li>
+            </ul>
+            <a class="open" href="./carbon.html"
+              >Explore Cobalt
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg
+            ></a>
+          </div>
+        </article>
+        <article style="--accent: #edb994; --ink: #34213d; --cover: #cdbde2">
+          <a class="preview" href="./plum.html" aria-label="Explore Lilac"
+            ><img
+              src="./previews/plum.png"
+              width="1440"
+              height="1000"
+              alt="Lilac landing page preview"
+          /></a>
+          <div class="content">
+            <div class="title">
+              <h2>Lilac</h2>
+              <span class="swatches" aria-hidden="true"
+                ><i style="--swatch: #74558f"></i><i style="--swatch: #d4bfe9"></i
+                ><i style="--swatch: #f2b892"></i
+              ></span>
+            </div>
+            <p class="description">
+              Warm lilac and peach, a sculpted wheel composition, and an editorial tour of the
+              actual desktop tools.
+            </p>
+            <ul>
+              <li>Selected header in a warm lilac palette</li>
+              <li>Real UI replaces invented app windows</li>
+              <li>Interactive wheel and screenshot viewer</li>
+            </ul>
+            <a class="open" href="./plum.html"
+              >Explore Lilac
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg
+            ></a>
+          </div>
+        </article>
+      </div>
+    </main>
+    <footer class="wrap">
+      <p>
+        These pages use the repository’s Synapse product captures. The interactive wheel is an
+        explanatory guide; it does not access your microphone, clipboard, notes, or AI provider.
+      </p>
+      <a href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
+        >Try the current Windows build</a
+      >
+    </footer>
+  </body>
+</html>

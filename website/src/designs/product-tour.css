@@ -1,0 +1,280 @@
+.sy-real-wheel {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: "Segoe UI", sans-serif;
+}
+.sy-sector-face {
+  fill: #28282a;
+  stroke: rgba(255, 255, 255, 0.13);
+  stroke-width: 0.75;
+  transition: fill 160ms ease-out;
+}
+.sy-sector-icon {
+  fill: #fff;
+  pointer-events: none;
+}
+.sy-sector[role="button"] {
+  cursor: pointer;
+  outline: none;
+}
+.sy-sector[aria-pressed="true"] .sy-sector-face,
+.sy-sector[role="button"]:hover .sy-sector-face {
+  fill: #454549;
+}
+.sy-sector:focus-visible .sy-sector-face {
+  stroke: #d6c4ff;
+  stroke-width: 2.5;
+}
+.sy-sector[data-tool="quit"]:hover .sy-sector-face {
+  fill: #842e35;
+}
+.sy-hub {
+  fill: #0c0c0e;
+}
+.sy-hub-title {
+  fill: #eaeaea;
+  text-anchor: middle;
+  font-size: 11px;
+  font-weight: 600;
+}
+.sy-hub-hint {
+  fill: #b4b4b7;
+  text-anchor: middle;
+  font-size: 6px;
+  letter-spacing: 0.15px;
+}
+body:has(.sy-tour[open], .sy-image-dialog[open]) {
+  overflow: hidden;
+}
+.sy-tour,
+.sy-image-dialog {
+  color: #f5f3f7;
+  background: rgba(13, 16, 24, 0.93);
+  border: 0;
+  padding: 0;
+  font-family: Manrope, sans-serif;
+}
+.sy-tour::backdrop,
+.sy-image-dialog::backdrop {
+  background: rgba(10, 13, 20, 0.6);
+  backdrop-filter: blur(14px);
+}
+.sy-tour {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  overflow: auto;
+  background: rgba(13, 16, 24, 0.56);
+}
+.sy-tour[open] .sy-tour-grid {
+  animation: sy-tour-arrive 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.sy-tour-shell {
+  width: min(1080px, calc(100% - 2 * clamp(24px, 7vw, 112px)));
+  margin: auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.sy-tour-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 28px 0;
+  font-size: 14px;
+  color: #d3d0dc;
+}
+.sy-close {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border: 1px solid #8e8b99;
+  border-radius: 30px;
+  background: #161b25;
+  padding: 10px 18px;
+  color: #fff;
+  font:
+    500 14px/1.4 Manrope,
+    sans-serif;
+  cursor: pointer;
+}
+.sy-close:hover {
+  background: #303642;
+}
+.sy-close svg,
+.sy-tour-link svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.sy-close:focus-visible,
+.sy-tour-link:focus-visible {
+  outline: 3px solid #ecc19e;
+  outline-offset: 4px;
+}
+.sy-tour-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(28px, 5vw, 80px);
+  margin-block: auto;
+  padding: 25px 0 40px;
+}
+.sy-wheel-column {
+  min-width: 0;
+}
+.sy-wheel-caption {
+  text-align: center;
+  color: #c8c6d0;
+  font:
+    12px/1.7 Manrope,
+    sans-serif;
+  margin: 0;
+}
+.sy-guide h2 {
+  margin: 0 0 16px;
+  font:
+    500 clamp(26px, 3vw, 36px)/1.2 Manrope,
+    sans-serif;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+.sy-guide #tour-lead {
+  margin: 0 0 24px;
+  font:
+    16px/1.7 Manrope,
+    sans-serif;
+  color: #e0dfe7;
+}
+.sy-guide ol {
+  margin: 0;
+  padding-left: 22px;
+  color: #dfdde6;
+  font:
+    14px/1.7 Manrope,
+    sans-serif;
+}
+.sy-guide li {
+  padding-left: 6px;
+  margin: 0 0 12px;
+}
+.sy-guide li::marker {
+  color: #e3b594;
+}
+.sy-tour-note {
+  margin: 20px 0;
+  padding-top: 18px;
+  border-top: 1px solid #ffffff29;
+  color: #bebbc9;
+  font:
+    12px/1.7 Manrope,
+    sans-serif;
+}
+.sy-tour-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  color: #fff;
+  font:
+    14px/1.5 Manrope,
+    sans-serif;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.sy-tour-foot {
+  color: #bdbbc6;
+  font:
+    12px/1.7 Manrope,
+    sans-serif;
+  margin: 0 0 28px;
+  max-width: 760px;
+}
+.sy-image-dialog {
+  width: min(1400px, 94vw);
+  max-width: 94vw;
+  max-height: 94dvh;
+  border-radius: 12px;
+  padding: 16px;
+  overflow: auto;
+}
+.sy-image-dialog > button {
+  margin: 0 0 16px auto;
+}
+.sy-image-dialog figure {
+  margin: 0;
+}
+.sy-image-dialog img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 74dvh;
+  object-fit: contain;
+}
+.sy-image-dialog figcaption {
+  color: #d6d3df;
+  font:
+    13px/1.6 Manrope,
+    sans-serif;
+  padding: 14px 8px 4px;
+  text-align: center;
+}
+@keyframes sy-tour-arrive {
+  from {
+    opacity: 0.65;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 700px) {
+  .sy-tour-header {
+    padding: 18px 0;
+  }
+  .sy-tour-header > span {
+    font-size: 12px;
+  }
+  .sy-tour-grid {
+    grid-template-columns: 1fr;
+    gap: 25px;
+    padding-top: 0;
+  }
+  .sy-wheel-column {
+    width: min(340px, 100%);
+    margin: auto;
+  }
+  .sy-guide h2 {
+    font-size: 26px;
+  }
+  .sy-guide #tour-lead {
+    font-size: 15px;
+  }
+  .sy-close {
+    font-size: 12px;
+    gap: 9px;
+    padding: 10px 13px;
+  }
+  .sy-image-dialog {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sy-tour *,
+  .sy-real-wheel * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

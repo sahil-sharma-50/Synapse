@@ -2,9 +2,15 @@ mod ai;
 mod ai_history;
 mod ai_usage;
 mod asr;
+mod browser;
+mod browser_protocol;
 mod clipboard_history;
 #[cfg(target_os = "windows")]
 mod desktop;
+#[cfg(target_os = "windows")]
+mod desktop_commands;
+#[cfg(target_os = "windows")]
+mod desktop_files;
 mod hybrid;
 mod ids;
 mod inject;
@@ -18,6 +24,9 @@ mod tts;
 mod tts_pocket;
 mod tts_setup;
 mod updater;
+mod workflow_recording;
+mod workflow_terminal;
+mod workflows;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -41,6 +50,7 @@ const CLIPBOARD_LABEL: &str = "clipboard";
 const AI_LABEL: &str = "ai-panel";
 const AI_ORB_SIZE: f64 = 224.0;
 const SETTINGS_LABEL: &str = "settings";
+const WORKFLOWS_LABEL: &str = "workflows";
 const ONBOARDING_LABEL: &str = "onboarding";
 /// Written by the NSIS post-install hook (see `installer/hooks.nsh`), consumed
 /// on the next launch. Lives in the app data dir alongside settings.json.
@@ -133,12 +143,7 @@ fn cursor_position() -> (i32, i32) {
 
 #[cfg(target_os = "windows")]
 fn capture_previous_focus() {
-    use std::sync::atomic::Ordering;
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    unsafe {
-        let hwnd = GetForegroundWindow();
-        PREVIOUS_FOCUS.store(hwnd.0 as isize, Ordering::SeqCst);
-    }
+    desktop::remember_external_target();
 }
 
 /// Restores focus to whatever app was focused before the overlay was shown.
@@ -489,6 +494,10 @@ fn take_fresh_install_marker(dir: &std::path::Path) -> bool {
 }
 
 fn show_utility_window(app: &tauri::AppHandle, label: &str) {
+    #[cfg(target_os = "windows")]
+    if label == AI_LABEL {
+        capture_previous_focus();
+    }
     let Some(window) = app.get_webview_window(label) else {
         eprintln!(
             "[synapse] show_utility_window({label}): no such window (have: {:?})",
@@ -507,6 +516,11 @@ fn show_utility_window(app: &tauri::AppHandle, label: &str) {
     // window-vibrancy to attach the Acrylic backdrop.
     std::thread::sleep(std::time::Duration::from_millis(16));
     apply_utility_glass(&window);
+}
+
+#[tauri::command]
+fn show_workflows(app: tauri::AppHandle) {
+    show_utility_window(&app, WORKFLOWS_LABEL);
 }
 
 fn note_label(id: &str) -> String {
@@ -1015,6 +1029,13 @@ fn update_settings(app: tauri::AppHandle, settings: settings::Settings) -> Resul
         }
         return Err(error);
     }
+    if previous.ai.browser_control && !settings.ai.browser_control {
+        app.state::<std::sync::Arc<browser::Bridge>>()
+            .disconnect("Chrome control disabled");
+    }
+    if !previous.ai.browser_control && settings.ai.browser_control {
+        app.state::<std::sync::Arc<browser::Bridge>>().enabled();
+    }
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let size = OVERLAY_SIZE * (f64::from(settings.appearance.wheel_size) / 100.0).max(1.0);
         let _ = window.set_size(tauri::LogicalSize::new(size, size));
@@ -1247,6 +1268,8 @@ struct Conversation(std::sync::Mutex<ConversationState>);
 
 #[derive(Default)]
 struct ConversationState {
+    #[cfg(target_os = "windows")]
+    desktop: desktop_commands::Session,
     session: u64,
     active: bool,
     turn: u64,
@@ -1266,6 +1289,10 @@ impl ConversationState {
     }
 
     fn renew(&mut self) -> (u64, Option<u64>) {
+        #[cfg(target_os = "windows")]
+        {
+            self.desktop = desktop_commands::Session::default();
+        }
         self.session += 1;
         self.active = true;
         self.turn = 0;
@@ -1297,7 +1324,7 @@ fn allow_ai_microphone(uri: &str, app_origin: &tauri::Url, active: bool) -> bool
 #[cfg(windows)]
 fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     use webview2_com::{take_pwstr, Microsoft::Web::WebView2::Win32::*, PermissionRequestedEventHandler};
-    use windows_core::Interface;
+    use webview_windows_core::Interface;
     let app = window.app_handle().clone();
     let origin = if tauri::is_dev() {
         app.config().build.dev_url.clone()
@@ -1308,7 +1335,7 @@ fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     window.with_webview(move |webview| {
         // SAFETY: Tauri runs this closure and WebView2 callbacks on its UI thread.
         let result = unsafe {
-            (|| -> windows_core::Result<()> {
+            (|| -> webview_windows_core::Result<()> {
                 let core = webview.controller().CoreWebView2()?;
                 core.add_PermissionRequested(
                     &PermissionRequestedEventHandler::create(Box::new(move |_, args| {
@@ -1321,7 +1348,7 @@ fn configure_ai_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
                         args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
                         args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
                             .SetSavesInProfile(false)?;
-                        let mut uri = windows_core::PWSTR::null();
+                        let mut uri = webview_windows_core::PWSTR::null();
                         args.Uri(&mut uri)?;
                         let uri = take_pwstr(uri);
                         let active = app.state::<Conversation>().0.lock().is_ok_and(|state| state.active);
@@ -1390,7 +1417,7 @@ fn finish_ai_reply(app: tauri::AppHandle, session: u64, turn: u64) -> Result<(),
 }
 
 #[tauri::command]
-fn begin_ai_session(app: tauri::AppHandle) -> Result<u64, String> {
+fn begin_ai_session(app: tauri::AppHandle, silent: Option<bool>) -> Result<u64, String> {
     let settings = settings::load(&settings_path(&app)?);
     let provider = ai::Provider::from_str(&settings.ai.provider)?;
     if settings.ai.hybrid && (!ai::has_api_key(ai::Provider::Openrouter) || !ai::has_api_key(ai::Provider::Openai)) {
@@ -1399,7 +1426,9 @@ fn begin_ai_session(app: tauri::AppHandle) -> Result<u64, String> {
     if !settings.ai.hybrid && !ai::has_api_key(provider) {
         return Err("Add your provider's API key in Settings > AI to start a conversation.".into());
     }
-    ai_voice_paths(&app)?;
+    if !silent.unwrap_or(false) {
+        ai_voice_paths(&app)?;
+    }
     let (session, previous_speech) = {
         let conversation = app.state::<Conversation>();
         let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
@@ -1417,6 +1446,7 @@ fn begin_ai_session(app: tauri::AppHandle) -> Result<u64, String> {
             while ai_session_current(&app, session) {
                 let pressed = |key: u16| unsafe { GetAsyncKeyState(key as i32) as u16 & 0x8000 != 0 };
                 if pressed(VK_CONTROL.0) && pressed(VK_MENU.0) && pressed(VK_ESCAPE.0) {
+                    workflows::cancel_all(&app);
                     end_ai_session(app.clone(), session);
                     let _ = app.emit("ai-emergency-stop", ());
                     break;
@@ -1444,15 +1474,69 @@ fn end_ai_session(app: tauri::AppHandle, session: u64) {
 }
 
 /// Returns after generation completes; audio completion is reported separately by TTS.
+#[derive(Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DesktopChoiceSelection {
+    set_id: String,
+    choice_id: String,
+}
+
 #[tauri::command]
-async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, turn: u64) -> Result<String, String> {
+async fn respond_desktop_choice(
+    app: tauri::AppHandle,
+    session: u64,
+    turn: u64,
+    set_id: String,
+    choice_id: String,
+    silent: Option<bool>,
+) -> Result<String, String> {
+    send_ai_message(
+        app,
+        "Open selected result".into(),
+        session,
+        turn,
+        silent,
+        Some(DesktopChoiceSelection { set_id, choice_id }),
+    )
+    .await
+}
+
+#[tauri::command]
+fn dismiss_desktop_choices(app: tauri::AppHandle, session: u64) -> Result<(), String> {
+    let conversation = app.state::<Conversation>();
+    let mut state = conversation.0.lock().map_err(|_| "Conversation unavailable")?;
+    if state.session != session {
+        return Err("Conversation closed".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        state.desktop.pending = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_ai_message(
+    app: tauri::AppHandle,
+    prompt: String,
+    session: u64,
+    turn: u64,
+    silent: Option<bool>,
+    choice: Option<DesktopChoiceSelection>,
+) -> Result<String, String> {
     if prompt.trim().is_empty() || prompt.chars().count() > 40000 {
         return Err("Please use a nonempty message under 40,000 characters.".into());
     }
+    #[cfg(target_os = "windows")]
+    let desktop_target = desktop::invocation_target();
     tauri::async_runtime::spawn_blocking(move || {
         let config = settings::load(&settings_path(&app)?).ai;
         let provider = ai::Provider::from_str(&config.provider)?;
-        let paths = ai_voice_paths(&app)?;
+        let paths = if silent.unwrap_or(false) {
+            None
+        } else {
+            Some(ai_voice_paths(&app)?)
+        };
         let db = storage::open(&storage::app_path(&app)?)?;
         let sidecar = app.state::<tts_pocket::TtsSidecar>();
         let (history, generation, reply_id) = {
@@ -1460,6 +1544,10 @@ async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, tu
             let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
             if state.session != session || state.turn != turn {
                 return Err("Conversation closed".into());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                state.desktop.target = desktop_target;
             }
             let model = if config.hybrid {
                 "Jev + GPT-4o Mini"
@@ -1470,7 +1558,7 @@ async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, tu
             let reply_id = ai_history::insert(&db, &state.log_id, "assistant", "", model)?;
             state.reply_id = Some(reply_id);
             state.turns.retain(|(_, text)| !text.is_empty());
-            state.turns.push(("user".into(), prompt));
+            state.turns.push(("user".into(), prompt.clone()));
             trim_conversation(&mut state.turns);
             let generation = sidecar.begin_utterance();
             state.speech = Some(generation);
@@ -1502,20 +1590,55 @@ async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, tu
                 }
             }
             for sentence in splitter.push(chunk) {
-                sidecar.enqueue(paths.job(generation, sentence));
+                if let Some(paths) = &paths {
+                    sidecar.enqueue(paths.job(generation, sentence));
+                }
             }
         };
-        let result = if config.hybrid {
-            hybrid::run(&app, &history, generation, &cancelled).inspect(|text| on_delta(text))
+        let result = if let Some(choice) = choice {
+            #[cfg(target_os = "windows")]
+            {
+                if !config.hybrid {
+                    Err("Enable desktop assistance in AI settings first.".into())
+                } else {
+                    workflows::manual(&app).and_then(|_guard| {
+                        desktop_commands::resume(&app, choice, generation, &cancelled).inspect(|text| on_delta(text))
+                    })
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = choice;
+                Err("Desktop control currently requires Windows.".into())
+            }
         } else {
-            ai::stream_chat(
-                &app,
-                provider,
-                config.model_for(provider),
-                &history,
-                &mut on_delta,
-                &cancelled,
-            )
+            match workflows::chat(&app, &prompt) {
+                Ok(Some(reply)) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        app.state::<Conversation>()
+                            .0
+                            .lock()
+                            .map_err(|_| "Conversation unavailable")?
+                            .desktop
+                            .pending = None;
+                    }
+                    on_delta(&reply);
+                    Ok(reply)
+                }
+                Err(error) => Err(error),
+                Ok(None) if config.hybrid => workflows::manual(&app).and_then(|_guard| {
+                    hybrid::run(&app, &history, generation, &cancelled).inspect(|text| on_delta(text))
+                }),
+                Ok(None) => ai::stream_chat(
+                    &app,
+                    provider,
+                    config.model_for(provider),
+                    &history,
+                    &mut on_delta,
+                    &cancelled,
+                ),
+            }
         };
         let conversation = app.state::<Conversation>();
         let mut state = conversation.0.lock().map_err(|_| "conversation lock poisoned")?;
@@ -1531,10 +1654,12 @@ async fn send_ai_message(app: tauri::AppHandle, prompt: String, session: u64, tu
         }
         match result {
             Ok(text) if !text.trim().is_empty() => {
-                if let Some(tail) = splitter.finish() {
-                    sidecar.enqueue(paths.job(generation, tail));
+                if let Some(paths) = &paths {
+                    if let Some(tail) = splitter.finish() {
+                        sidecar.enqueue(paths.job(generation, tail));
+                    }
+                    sidecar.end_utterance(generation);
                 }
-                sidecar.end_utterance(generation);
                 trim_conversation(&mut state.turns);
                 let _ = app.emit("ai-history-changed", ());
                 Ok(text)
@@ -1737,6 +1862,9 @@ fn queue_speech(app: tauri::AppHandle, text: String, generation: u64) {
 /// Barge-in. Cancels whichever engine is actually live.
 #[tauri::command]
 fn stop_speaking(app: tauri::AppHandle, generation: Option<u64>) {
+    if let Some(generation) = generation {
+        app.state::<std::sync::Arc<browser::Bridge>>().stop(generation);
+    }
     if generation.is_some_and(|id| !app.state::<tts_pocket::TtsSidecar>().is_active(id)) {
         return;
     }
@@ -1750,6 +1878,54 @@ fn stop_speaking(app: tauri::AppHandle, generation: Option<u64>) {
 #[tauri::command]
 fn is_speaking() -> bool {
     tts::is_speaking()
+}
+
+#[tauri::command]
+fn set_ai_input_mode(
+    app: tauri::AppHandle,
+    typing: bool,
+    expanded: Option<bool>,
+    content_height: Option<f64>,
+) -> Result<(), String> {
+    let window = app.get_webview_window(AI_LABEL).ok_or("AI window unavailable")?;
+    window
+        .set_size(tauri::LogicalSize::new(
+            if expanded.unwrap_or(false) {
+                440.0
+            } else if typing {
+                400.0
+            } else {
+                AI_ORB_SIZE
+            },
+            if expanded.unwrap_or(false) {
+                content_height
+                    .filter(|height| height.is_finite())
+                    .unwrap_or(320.0)
+                    .clamp(180.0, 520.0)
+            } else if typing {
+                360.0
+            } else {
+                AI_ORB_SIZE
+            },
+        ))
+        .map_err(|e| e.to_string())?;
+    if let (Ok(Some(monitor)), Ok(position), Ok(size)) =
+        (window.current_monitor(), window.outer_position(), window.outer_size())
+    {
+        let area = monitor.work_area();
+        let size = tauri::PhysicalSize::new(size.width.min(area.size.width), size.height.min(area.size.height));
+        window.set_size(size).map_err(|e| e.to_string())?;
+        let (x, y) = clamp_window_position(
+            (position.x, position.y),
+            (area.position.x, area.position.y),
+            (area.size.width, area.size.height),
+            (size.width, size.height),
+        );
+        window
+            .set_position(tauri::PhysicalPosition::new(x, y))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// Same clipboard paste-and-restore path as dictation/snippets (PRD §4.4) —
@@ -1806,7 +1982,30 @@ pub fn run() {
         .manage(tts_pocket::TtsSidecar::new())
         .manage(GeometryQueue::default())
         .manage(Conversation::default())
+        .manage(std::sync::Arc::new(browser::Bridge::default()))
+        .manage(workflows::State::default())
         .invoke_handler(tauri::generate_handler![
+            show_workflows,
+            workflows::workflow_list,
+            workflows::workflow_save,
+            workflows::workflow_delete,
+            workflows::workflow_approve,
+            workflows::workflow_import,
+            workflows::workflow_export,
+            workflows::workflow_history,
+            workflows::workflow_clear_history,
+            workflows::workflow_current,
+            workflows::workflow_run,
+            workflows::workflow_cancel,
+            workflows::workflow_respond,
+            workflows::workflow_draft,
+            workflows::workflow_demonstrate,
+            workflows::workflow_terminal,
+            workflows::workflow_record_targets,
+            workflows::workflow_record_start,
+            workflows::workflow_record_pause,
+            workflows::workflow_record_stop,
+            workflows::workflow_record_status,
             dismiss_overlay,
             show_speech_controls,
             select_wedge,
@@ -1846,12 +2045,16 @@ pub fn run() {
             set_api_key,
             provider_status,
             begin_ai_session,
+            set_ai_input_mode,
             interrupt_ai_reply,
             finish_ai_reply,
             get_ai_history,
             get_ai_usage,
             end_ai_session,
             send_ai_message,
+            respond_desktop_choice,
+            dismiss_desktop_choices,
+            browser::browser_status,
             insert_ai_response,
             transcribe_for_ai,
             check_mic_access,
@@ -1874,6 +2077,8 @@ pub fn run() {
             download_update
         ])
         .setup(|app| {
+            #[cfg(windows)]
+            browser::start(app.handle().clone());
             let model_dir = model_download::model_dir(app.handle())?;
             // Clears fp32 leftovers an earlier build downloaded before the
             // model preloads, so a machine that upgraded doesn't keep loading
@@ -1910,6 +2115,9 @@ pub fn run() {
                 }
             }
             clipboard_history::spawn_watcher(app.handle().clone());
+            if let Err(error) = workflows::recover(app.handle()) {
+                eprintln!("[workflow] run recovery failed: {error}");
+            }
 
             // Hands the TTS sidecar its AppHandle (for tts-started/ended) and
             // starts the synthesis worker. Must happen here, not at .manage()
@@ -2072,6 +2280,23 @@ pub fn run() {
                 }
             });
 
+            let workflows_window =
+                WebviewWindowBuilder::new(app, WORKFLOWS_LABEL, WebviewUrl::App("index.html".into()))
+                    .title("Synapse - Workflows")
+                    .inner_size(1060.0, 760.0)
+                    .min_inner_size(620.0, 460.0)
+                    .decorations(false)
+                    .transparent(true)
+                    .visible(false)
+                    .build()?;
+            let workflow_window = workflows_window.clone();
+            workflows_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = workflow_window.hide();
+                }
+            });
+
             let settings_window = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
                 .title("Synapse - Settings")
                 .inner_size(860.0, 640.0)
@@ -2216,6 +2441,8 @@ pub fn run() {
             // child processes on drop, and Windows won't reap it on its own.
             // Without this, python.exe survives Synapse exiting.
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                workflows::cancel_all(app_handle);
+                workflow_terminal::shutdown();
                 app_handle.state::<tts_pocket::TtsSidecar>().kill();
             }
         });
