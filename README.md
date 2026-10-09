@@ -16,6 +16,8 @@ Synapse puts dictation, AI assistance, and capture tools one shortcut away. Pres
 
 **Windows is supported and tested.** macOS code exists but has not been tested on macOS hardware. The current release provides a Windows x64 installer.
 
+🌐 <a href="https://sahil-sharma-50.github.io/Synapse/" target="_blank" rel="noopener noreferrer">Visit the Synapse website</a>
+
 ## Install
 
 Download the `Synapse_*_x64-setup.exe` from the [latest release](https://github.com/sahil-sharma-50/Synapse/releases/latest). First-run setup explains microphone access and the optional local speech downloads. You can skip those downloads and start them later in Settings → Voice.
