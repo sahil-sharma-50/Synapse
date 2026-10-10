@@ -27,9 +27,6 @@
   stroke: #d6c4ff;
   stroke-width: 2.5;
 }
-.sy-sector[data-tool="quit"]:hover .sy-sector-face {
-  fill: #842e35;
-}
 .sy-hub {
   fill: #0c0c0e;
 }
@@ -50,15 +47,15 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
 }
 .sy-tour,
 .sy-image-dialog {
-  color: #f5f3f7;
-  background: rgba(13, 16, 24, 0.93);
+  color: var(--foreground);
+  background: var(--background);
   border: 0;
   padding: 0;
   font-family: Manrope, sans-serif;
 }
 .sy-tour::backdrop,
 .sy-image-dialog::backdrop {
-  background: rgba(10, 13, 20, 0.6);
+  background: rgb(0 0 0 / 55%);
   backdrop-filter: blur(14px);
 }
 .sy-tour {
@@ -68,13 +65,13 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   max-height: none;
   margin: 0;
   overflow: auto;
-  background: rgba(13, 16, 24, 0.56);
+  background: var(--header);
 }
 .sy-tour[open] .sy-tour-grid {
-  animation: sy-tour-arrive 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sy-tour-arrive 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .sy-tour-shell {
-  width: min(1080px, calc(100% - 2 * clamp(24px, 7vw, 112px)));
+  width: min(1152px, calc(100% - 48px));
   margin: auto;
   min-height: 100%;
   display: flex;
@@ -87,7 +84,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   gap: 20px;
   padding: 28px 0;
   font-size: 14px;
-  color: #d3d0dc;
+  color: var(--foreground);
 }
 .sy-close {
   min-height: 44px;
@@ -95,18 +92,18 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  border: 1px solid #8e8b99;
-  border-radius: 30px;
-  background: #161b25;
+  border: 1px solid var(--edge-hover);
+  border-radius: 10px 0 10px 0;
+  background: var(--card);
   padding: 10px 18px;
-  color: #fff;
+  color: var(--foreground);
   font:
     500 14px/1.4 Manrope,
     sans-serif;
   cursor: pointer;
 }
 .sy-close:hover {
-  background: #303642;
+  background: var(--soft);
 }
 .sy-close svg,
 .sy-tour-link svg {
@@ -119,7 +116,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
 }
 .sy-close:focus-visible,
 .sy-tour-link:focus-visible {
-  outline: 3px solid #ecc19e;
+  outline: 3px solid var(--foreground);
   outline-offset: 4px;
 }
 .sy-tour-grid {
@@ -135,7 +132,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
 }
 .sy-wheel-caption {
   text-align: center;
-  color: #c8c6d0;
+  color: var(--muted);
   font:
     12px/1.7 Manrope,
     sans-serif;
@@ -147,19 +144,19 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
     500 clamp(26px, 3vw, 36px)/1.2 Manrope,
     sans-serif;
   letter-spacing: -0.03em;
-  color: #fff;
+  color: var(--foreground);
 }
 .sy-guide #tour-lead {
   margin: 0 0 24px;
   font:
     16px/1.7 Manrope,
     sans-serif;
-  color: #e0dfe7;
+  color: var(--foreground);
 }
 .sy-guide ol {
   margin: 0;
   padding-left: 22px;
-  color: #dfdde6;
+  color: var(--foreground);
   font:
     14px/1.7 Manrope,
     sans-serif;
@@ -169,13 +166,13 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   margin: 0 0 12px;
 }
 .sy-guide li::marker {
-  color: #e3b594;
+  color: var(--foreground);
 }
 .sy-tour-note {
   margin: 20px 0;
   padding-top: 18px;
-  border-top: 1px solid #ffffff29;
-  color: #bebbc9;
+  border-top: 1px solid var(--edge);
+  color: var(--muted);
   font:
     12px/1.7 Manrope,
     sans-serif;
@@ -185,7 +182,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   align-items: center;
   gap: 16px;
   min-height: 44px;
-  color: #fff;
+  color: var(--foreground);
   font:
     14px/1.5 Manrope,
     sans-serif;
@@ -193,7 +190,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   text-underline-offset: 5px;
 }
 .sy-tour-foot {
-  color: #bdbbc6;
+  color: var(--muted);
   font:
     12px/1.7 Manrope,
     sans-serif;
@@ -222,7 +219,7 @@ body:has(.sy-tour[open], .sy-image-dialog[open]) {
   object-fit: contain;
 }
 .sy-image-dialog figcaption {
-  color: #d6d3df;
+  color: var(--foreground);
   font:
     13px/1.6 Manrope,
     sans-serif;

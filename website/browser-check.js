@@ -1,8 +1,10 @@
 async function checkWebsite(page) {
-  const base = "http://127.0.0.1:4173/";
+  const base = new URL("./", page.url()).href;
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(base);
+  await page.evaluate(() => localStorage.removeItem("synapse-theme"));
   await page.goto(base, { waitUntil: "networkidle" });
   await page.evaluate(() => {
     document.querySelectorAll("img").forEach((img) => (img.loading = "eager"));
@@ -13,23 +15,30 @@ async function checkWebsite(page) {
       .filter((i) => i.getAttribute("src"))
       .every((i) => i.complete && i.naturalWidth),
   );
-  const top = await page.locator(".header-space").boundingBox();
-  if (top.y < 15 || top.x < 24 || top.width > 1121) throw Error("Top nav must be inset");
-  if (
-    (await page.locator(".header-space").evaluate((el) => getComputedStyle(el).borderRadius)) ===
-    "0px"
-  )
-    throw Error("Top nav must be rounded");
-  await page.screenshot({ path: "output/playwright/published-home-desktop.png" });
+  const atTop = () =>
+    page.locator(".header-space").evaluate((el) => {
+      const style = getComputedStyle(el);
+      return style.backgroundColor === "rgba(0, 0, 0, 0)" && style.backdropFilter === "none";
+    });
+  if (!(await atTop())) throw Error("Top nav must be transparent without blur");
+  await page.screenshot({
+    path: "output/playwright/chaiui-home-desktop.png",
+    animations: "disabled",
+  });
   await page.evaluate(() => scrollTo({ top: 600, behavior: "instant" }));
   await page.waitForFunction(() => {
-    const r = document.querySelector(".header-space").getBoundingClientRect();
-    return r.y === 0 && Math.abs(r.width - innerWidth) < 1;
+    const header = document.querySelector(".header-space");
+    return (
+      header.classList.contains("is-scrolled") && getComputedStyle(header).backdropFilter !== "none"
+    );
   });
-  await page.screenshot({ path: "output/playwright/published-home-scrolled.png" });
+  await page.screenshot({
+    path: "output/playwright/chaiui-home-scrolled.png",
+    animations: "disabled",
+  });
   await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
   await page.waitForFunction(
-    () => document.querySelector(".header-space").getBoundingClientRect().y >= 21,
+    () => !document.querySelector(".header-space").classList.contains("is-scrolled"),
   );
   await page.locator(".hero-wheel").click();
   const tour = page.locator(".sy-tour");
@@ -62,24 +71,73 @@ async function checkWebsite(page) {
     )
       throw Error("Image layout");
   }
-  for (const route of ["", "getting-started/", "privacy/", "404.html"]) {
-    await page.goto(base + route, { waitUntil: "networkidle" });
-    if ((await page.locator("h1").count()) !== 1) throw Error("Heading on " + route);
-    for (const width of [320, 390, 768, 1050, 1440]) {
-      await page.setViewportSize({ width, height: 900 });
-      if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth))
-        throw Error("Overflow " + route + " " + width);
-      if (route === "" && width === 390) {
-        await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
-        await page.waitForFunction(
-          () => document.querySelector(".header-space").getBoundingClientRect().y >= 15,
-        );
-        await page.screenshot({
-          path: "output/playwright/published-home-mobile.png",
-          animations: "disabled",
-        });
+  for (const theme of ["dark", "light"]) {
+    if (theme === "light") {
+      await page.locator("[data-toggle-theme]").click();
+      await page.reload({ waitUntil: "networkidle" });
+      if ((await page.locator("html").getAttribute("data-theme")) !== "light")
+        throw Error("Theme persistence");
+      await page.screenshot({
+        path: "output/playwright/chaiui-home-light.png",
+        animations: "disabled",
+      });
+    }
+    for (const route of ["", "getting-started/", "privacy/", "404.html"]) {
+      await page.goto(base + route, { waitUntil: "networkidle" });
+      if ((await page.locator("h1").count()) !== 1) throw Error("Heading on " + route);
+      if (theme === "light" && (await page.locator("html").getAttribute("data-theme")) !== "light")
+        throw Error("Theme across routes");
+      for (const width of [320, 375, 768, 1050, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth))
+          throw Error("Overflow " + route + " " + width);
+        if (route === "" && width === 375) {
+          await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+          await page.waitForFunction(
+            () => !document.querySelector(".header-space").classList.contains("is-scrolled"),
+          );
+          await page.screenshot({
+            path: `output/playwright/chaiui-home-mobile-${theme}.png`,
+            animations: "disabled",
+          });
+          await page.locator(".mobile-menu summary").focus();
+          await page.keyboard.press("Enter");
+          if (!(await page.locator(".mobile-menu").evaluate((el) => el.open)))
+            throw Error("Mobile keyboard navigation");
+          await page.keyboard.press("Escape");
+          if (await page.locator(".mobile-menu").evaluate((el) => el.open))
+            throw Error("Mobile menu escape");
+          await page.locator(".mobile-menu summary").click();
+          await page.locator('.mobile-menu a[href="#faq"]').click();
+          if (await page.locator(".mobile-menu").evaluate((el) => el.open))
+            throw Error("Mobile menu should close after navigation");
+        }
       }
     }
+    await page.goto(base, { waitUntil: "networkidle" });
+    await page.locator(".hero-wheel").click();
+    if (!(await page.locator(".sy-tour").isVisible())) throw Error("Tour in " + theme);
+    await page.locator(".sy-tour .sy-close").hover();
+    if (
+      await page.locator(".sy-tour .sy-close").evaluate((el) => {
+        const style = getComputedStyle(el);
+        return style.color === style.backgroundColor;
+      })
+    )
+      throw Error("Close button hover contrast in " + theme);
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() =>
+      document.getAnimations().every((animation) => animation.playState === "finished"),
+    );
+    await page.screenshot({
+      path: `output/playwright/chaiui-tour-${theme}.png`,
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await page.locator("#usage a.shot").click();
+    if (!(await page.locator(".sy-image-dialog").isVisible())) throw Error("Zoom in " + theme);
+    await page.keyboard.press("Escape");
+    await page.goto(base, { waitUntil: "networkidle" });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(base, { waitUntil: "networkidle" });
@@ -89,5 +147,5 @@ async function checkWebsite(page) {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto(base);
   if (errors.length) throw Error(errors.join("; "));
-  return "Four routes at five widths; inset-to-full-width nav and return, eight wheel guides, keyboard FAQs, zoom, screenshot layout, reduced motion and console checks pass.";
+  return "Both themes, persistence, four routes at five widths, transparent/scrolled nav, mobile keyboard navigation, eight wheel guides, keyboard FAQs, zoom, screenshot layout, reduced motion and console checks pass.";
 }

@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 const root = dirname(fileURLToPath(import.meta.url));
 async function build(extra = {}) {
   const output = await mkdtemp(join(tmpdir(), "synapse-site-"));
@@ -97,4 +98,38 @@ test("screenshots and wheel icons match the app sources", async () => {
   const icons = [...wheel.matchAll(/icon: "([^"]+)"/g)];
   assert.equal(icons.length, 8);
   for (const [, icon] of icons) assert.ok(tour.includes(JSON.stringify(icon)), "Wheel icon drift");
+});
+
+test("theme defaults to dark, remembers light, and works without browser storage", async () => {
+  const script = await readFile(join(root, "src/theme.js"), "utf8");
+  for (const stored of [null, "light", "invalid", "unavailable"]) {
+    const dataset = {};
+    let click;
+    let saved;
+    runInNewContext(script, {
+      document: {
+        documentElement: { dataset },
+        addEventListener: (_, handler) => (click = handler),
+      },
+      localStorage: {
+        getItem: () => {
+          if (stored === "unavailable") throw new Error("Storage blocked");
+          return stored;
+        },
+        setItem: (_, value) => {
+          if (stored === "unavailable") throw new Error("Storage blocked");
+          saved = value;
+        },
+      },
+    });
+    const initial = stored === "light" ? "light" : undefined;
+    assert.equal(dataset.theme, initial);
+    click({ target: { closest: () => null } });
+    assert.equal(dataset.theme, initial);
+    click({ target: { closest: () => true } });
+    assert.equal(dataset.theme, stored === "light" ? "dark" : "light");
+    if (stored !== "unavailable") assert.equal(saved, dataset.theme);
+    click({ target: { closest: () => true } });
+    assert.equal(dataset.theme, stored === "light" ? "light" : "dark");
+  }
 });

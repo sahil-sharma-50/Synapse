@@ -6,15 +6,24 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta name="color-scheme" content="dark light" />
     <title>Synapse | Everyday tools, one shortcut away</title>
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/product-tour.css" />
     <script src="/product-tour.js" defer></script>
     <script src="/site.js" defer></script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="cobalt">
+  <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <main id="main">
-      <div class="blue">
+      <div class="hero-band">
+        <img
+          class="chai-backdrop"
+          src="/assets/chai-background.svg"
+          alt=""
+          aria-hidden="true"
+          width="2842"
+          height="1132"
+        />
         <div class="header-space">
           <header class="wrap header">
             <a class="brand" href="#home" aria-label="Synapse home"
@@ -23,21 +32,54 @@
             <nav class="nav" aria-label="Main navigation">
               <a href="#how-it-works">How it works</a><a href="#customize">Make it yours</a
               ><a href="#faq">FAQ</a
-              ><a class="pill" href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
+              ><a
+                class="pill outline"
+                href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
                 >Download
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg
+                  <path d="M7 17 17 7M7 7h10v10" /></svg
               ></a>
+              <button
+                class="theme-switcher"
+                type="button"
+                data-toggle-theme
+                aria-label="Toggle theme"
+                title="Toggle theme"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 3v18m0-12 4.65-4.65M12 14.3l7.37-7.37M12 19.6l8.85-8.85" />
+                </svg>
+              </button>
+              <details class="mobile-menu">
+                <summary aria-label="Open navigation">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h16M4 12h16M4 17h16" />
+                  </svg>
+                </summary>
+                <div>
+                  <a href="#how-it-works">How it works</a><a href="#customize">Make it yours</a
+                  ><a href="#faq">FAQ</a><a href="/getting-started/">Getting started</a>
+                </div>
+              </details>
             </nav>
           </header>
         </div>
         <div id="home">
           <div class="wrap hero">
             <div>
+              <p class="eyebrow">A little less switching. A little more doing.</p>
               <h1>A shortcut to<br />what comes next.</h1>
               <p>
-                Speak a thought. Ask AI. Save something for later. Your everyday tools, one shortcut
-                from wherever you’re working.
+                Speak a thought. Ask AI. Save something for later.
+                <span class="highlight">Your everyday tools</span>, one shortcut from wherever
+                you’re working.
               </p>
               <div class="actions">
                 <a
@@ -45,8 +87,11 @@
                   href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
                   >Download for Windows
                   <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg></a
-                ><button class="pill outline" type="button" data-open-tour>Open the wheel</button>
+                    <path d="M7 17 17 7M7 7h10v10" /></svg></a
+                ><button class="pill outline" type="button" data-open-tour>
+                  Open the wheel
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+                </button>
               </div>
               <p class="platform">Current public release · Windows x64</p>
             </div>
@@ -79,8 +124,8 @@
           <div class="section-intro">
             <h2 id="flow-title">From a thought<br />to the place it belongs.</h2>
             <p>
-              Keep working in the app you already have open. Synapse brings the next action to you,
-              then gets out of the way.
+              Keep working in <span class="highlight">the app you already have open</span>. Synapse
+              brings the next action to you, then gets out of the way.
             </p>
           </div>
           <div class="tour-grid">
@@ -98,7 +143,7 @@
                   loading="lazy"
               /></a>
               <figcaption>The Synapse wheel. Open it wherever you are working.</figcaption>
-              <button class="pill light" type="button" data-open-tour>
+              <button class="pill soft" type="button" data-open-tour>
                 Explore the eight tools
               </button>
             </figure>
@@ -154,8 +199,9 @@
           <div class="editorial-copy">
             <h2 id="customize-title">Make room for<br />your kind of work.</h2>
             <p>
-              Pick the wheel’s colors, change its size, and choose which tools appear. Settings puts
-              the everyday details within reach.
+              Pick the wheel’s colors, change its size, and
+              <span class="highlight">choose which tools appear</span>. Settings puts the everyday
+              details within reach.
             </p>
             <p class="small">
               The screenshot shows the actual app’s customization controls. Open it to take a closer
@@ -187,8 +233,8 @@
           <div class="editorial-copy">
             <h2 id="usage-title">Know where<br />your AI usage goes.</h2>
             <p>
-              Bring your own Anthropic, OpenAI, or OpenRouter API key. Review requests, tokens, and
-              cost estimates in one place.
+              <span class="highlight">Bring your own API key</span> for Anthropic, OpenAI, or
+              OpenRouter. Review requests, tokens, and cost estimates in one place.
             </p>
             <p class="small">
               Usage records stay on your computer. Your keys are stored in the operating system’s
@@ -268,7 +314,7 @@
           <a class="pill" href="https://github.com/sahil-sharma-50/Synapse/releases/latest"
             >Download for Windows
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" /></svg
+              <path d="M7 17 17 7M7 7h10v10" /></svg
           ></a>
         </div>
       </section>

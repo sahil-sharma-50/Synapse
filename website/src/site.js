@@ -4,6 +4,17 @@ updateHeader();
 addEventListener("scroll", updateHeader, { passive: true });
 addEventListener("pageshow", updateHeader);
 
+const menu = document.querySelector(".mobile-menu");
+menu?.addEventListener("click", (event) => {
+  if (event.target.closest("a")) menu.open = false;
+});
+addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && menu?.open) {
+    menu.open = false;
+    menu.querySelector("summary").focus();
+  }
+});
+
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 if ("IntersectionObserver" in window && !motion.matches) {
   const observer = new IntersectionObserver(
@@ -16,7 +27,7 @@ if ("IntersectionObserver" in window && !motion.matches) {
               { transform: "translateY(24px)", opacity: 0.65 },
               { transform: "translateY(0)", opacity: 1 },
             ],
-            { duration: 650, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+            { duration: 250, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
           );
         observer.unobserve(entry.target);
       }

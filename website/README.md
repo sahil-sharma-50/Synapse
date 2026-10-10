@@ -1,6 +1,6 @@
 # Synapse website
 
-The approved Synapse landing page, setup guide, privacy page, and 404. Static HTML/CSS/JavaScript with a dependency-free Node 22 build. The site uses dark and white surfaces with restrained dark blue, real repository screenshots, and the app's wheel geometry and icons.
+The Synapse landing page, setup guide, privacy page, and 404. Static HTML/CSS/JavaScript with a dependency-free Node 22 build. The site adapts ChaiUI's published design tokens to static CSS: near-black surfaces, cream highlights, warm hairlines, asymmetric buttons, and a hexagon backdrop. Dark is the default; the theme switcher remembers light or dark locally. Real repository screenshots and the app's wheel geometry and icons provide the product visuals.
 
 ## Preview and checks
 
@@ -19,7 +19,7 @@ npx --yes --package @playwright/cli playwright-cli -s=synapse-site open http://1
 npx --yes --package @playwright/cli playwright-cli -s=synapse-site run-code --filename=website/browser-check.js
 ```
 
-The browser check covers four routes at five widths, the navigation's inset/expanded/returned states, all eight tool guides, keyboard FAQs, focus restoration, screenshot zoom, and reduced motion. Screenshots go to ignored `output/playwright/`.
+The browser check covers both themes, four routes at five widths, transparent/scrolled navigation, mobile navigation, all eight tool guides, keyboard FAQs, focus restoration, screenshot zoom, and reduced motion. Screenshots go to ignored `output/playwright/`.
 
 ## Publishing
 

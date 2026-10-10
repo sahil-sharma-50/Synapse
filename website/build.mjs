@@ -96,12 +96,17 @@ for (const [file, route, title, description] of pages) {
   await mkdir(dirname(join(output, file)), { recursive: true });
   await writeFile(join(output, file), html);
 }
-for (const file of ["styles.css", "site.js", "product-tour.css", "product-tour.js"])
+for (const file of ["styles.css", "site.js", "theme.js", "product-tour.css", "product-tour.js"])
   await copyFile(join(root, "src", file), join(output, file));
 await mkdir(join(output, "assets"), { recursive: true });
 const assets = [
   "manrope.woff2",
   "Manrope-LICENSE.txt",
+  "montserrat.woff2",
+  "Montserrat-LICENSE.txt",
+  "onest.woff2",
+  "Onest-LICENSE.txt",
+  "chai-background.svg",
   "synapse-icon.png",
   "synapse-overview.png",
   "customization_options.png",
