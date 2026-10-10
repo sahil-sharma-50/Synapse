@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile, copyFile, cp } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const output = resolve(process.argv[2] || join(root, "dist"));
@@ -24,7 +25,24 @@ if (process.env.SITE_URL) {
 }
 if (production && !site) throw new Error("SITE_URL is required for production.");
 const prefix = site?.pathname || "/";
-const localPaths = (html) => html.replace(/(href|src)="\/(?!\/)/g, '$1="' + prefix);
+const browserFiles = ["styles.css", "site.js", "theme.js", "product-tour.css", "product-tour.js"];
+const versions = new Map(
+  await Promise.all(
+    browserFiles.map(async (file) => [
+      file,
+      createHash("sha256")
+        .update(await readFile(join(root, "src", file)))
+        .digest("hex")
+        .slice(0, 12),
+    ]),
+  ),
+);
+const localPaths = (html) =>
+  html.replace(
+    /(href|src)="\/(?!\/)([^"]*)"/g,
+    (_, attr, path) =>
+      `${attr}="${prefix}${path}${versions.has(path) ? "?v=" + versions.get(path) : ""}"`,
+  );
 const home = await readFile(join(root, "src/index.html"), "utf8");
 const head = home.match(/<head>([\s\S]*?)<\/head>/)[1];
 const header = home.match(/<div class="header-space">[\s\S]*?(?=\s*<div id="home">)/)[0];
@@ -96,8 +114,7 @@ for (const [file, route, title, description] of pages) {
   await mkdir(dirname(join(output, file)), { recursive: true });
   await writeFile(join(output, file), html);
 }
-for (const file of ["styles.css", "site.js", "theme.js", "product-tour.css", "product-tour.js"])
-  await copyFile(join(root, "src", file), join(output, file));
+for (const file of browserFiles) await copyFile(join(root, "src", file), join(output, file));
 await mkdir(join(output, "assets"), { recursive: true });
 const assets = [
   "manrope.woff2",

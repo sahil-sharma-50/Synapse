@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat, cp, copyFile, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 const root = dirname(fileURLToPath(import.meta.url));
-async function build(extra = {}) {
+async function build(extra = {}, source = root) {
   const output = await mkdtemp(join(tmpdir(), "synapse-site-"));
-  const result = spawnSync(process.execPath, [join(root, "build.mjs"), output], {
+  const result = spawnSync(process.execPath, [join(source, "build.mjs"), output], {
     env: { ...process.env, SITE_MODE: "preview", SITE_URL: "", ...extra },
     encoding: "utf8",
   });
@@ -23,7 +23,8 @@ async function checkLinks(output, prefix = "/") {
     assert.doesNotMatch(html, /{{[A-Z_]+}}|<form\b|waitlist|Cloudflare|MailerLite/i);
     for (const [, target] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
       if (/^(https?:|mailto:|data:)/.test(target)) continue;
-      const [path, fragment] = target.split("#");
+      const [pathname, fragment] = target.split("#");
+      const path = pathname.split("?")[0];
       if (path) assert.ok(path.startsWith(prefix), file + ": wrong base path " + path);
       const relative = path ? path.slice(prefix.length) : file;
       const dest = relative.endsWith("/") || relative === "" ? relative + "index.html" : relative;
@@ -131,5 +132,26 @@ test("theme defaults to dark, remembers light, and works without browser storage
     if (stored !== "unavailable") assert.equal(saved, dataset.theme);
     click({ target: { closest: () => true } });
     assert.equal(dataset.theme, stored === "light" ? "light" : "dark");
+  }
+});
+
+test("changed styles get a new URL so browsers cannot reuse an older deployment", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "synapse-site-cache-"));
+  await copyFile(join(root, "build.mjs"), join(fixture, "build.mjs"));
+  await cp(join(root, "src"), join(fixture, "src"), { recursive: true });
+  const before = await build({}, fixture);
+  assert.equal(before.status, 0, before.stderr);
+  await appendFile(join(fixture, "src/styles.css"), "\n/* Updated design */\n");
+  const after = await build({}, fixture);
+  assert.equal(after.status, 0, after.stderr);
+  const styleUrl = async (output) =>
+    (await readFile(join(output, "index.html"), "utf8")).match(
+      /href="([^"]*\/styles\.css[^"]*)"/,
+    )[1];
+  assert.notEqual(await styleUrl(before.output), await styleUrl(after.output));
+  for (const file of routes) {
+    const html = await readFile(join(after.output, file), "utf8");
+    assert.match(html, /styles\.css\?v=[a-f0-9]{12}/);
+    assert.match(html, /theme\.js\?v=[a-f0-9]{12}/);
   }
 });

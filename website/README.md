@@ -27,6 +27,8 @@ Source is on `main` in the Synapse repository. `.github/workflows/pages.yml` tes
 
 Public URL: https://sahil-sharma-50.github.io/Synapse/
 
+The builder adds a content hash to CSS and script URLs so returning visitors load the current design after deployment. The preview and public site remember theme preferences separately because they are different browser origins; select the same theme when comparing them.
+
 The workflow sets `SITE_MODE=production` and `SITE_URL=https://sahil-sharma-50.github.io/Synapse/`. The builder prefixes local links and metadata for the project path. Production requires a valid HTTPS site URL. Use a fresh output directory for publishing; the workflow uses a clean checkout and `_site`.
 
 Preview builds stay noindex. If historical alternatives exist in the local checkout, preview builds include them under `/designs/`; they are excluded from the published source and artifact. The approved page is `src/index.html`; shared styles, scrolling behavior, and wheel guide live in `src/styles.css`, `src/site.js`, and `src/product-tour.*`. Supporting pages share its header, footer, fonts, and palette through the build.
