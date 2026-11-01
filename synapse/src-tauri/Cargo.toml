@@ -35,7 +35,7 @@ xcap = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
 chrono = "0.4"
-dirs = "6"
+dirs = "7"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 # The platform-store feature is NOT optional: with no store feature keyring
 # silently compiles in its in-memory `mock` store, which hands out a fresh
