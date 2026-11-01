@@ -38,6 +38,57 @@ pub fn take_update_pending_marker(dir: &Path) -> bool {
     std::fs::remove_file(dir.join(UPDATE_PENDING_MARKER)).is_ok()
 }
 
+/// Where this install gets its updates from.
+///
+/// The same `synapse.exe` ships in two containers: the signed NSIS installer
+/// from GitHub Releases, and an MSIX package from the Microsoft Store. A Store
+/// install must never run the self-updater — the Store owns updates for
+/// packaged apps, and an NSIS installer run from inside a package would put a
+/// second, unmanaged copy next to it. So this is decided at runtime from the
+/// process's package identity rather than by a build flag that could drift.
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    /// Installed from the NSIS installer; Settings → Updates drives the plugin.
+    Direct,
+    /// Running from an MSIX package; the Microsoft Store delivers updates.
+    Store,
+}
+
+/// Returned by the update commands when the Store owns updates. The frontend
+/// asks for the channel first and never offers the button, so reaching this
+/// means a caller skipped that check.
+pub const STORE_MANAGED: &str = "updates for this copy are delivered by the Microsoft Store";
+
+pub fn channel() -> UpdateChannel {
+    if is_packaged() {
+        UpdateChannel::Store
+    } else {
+        UpdateChannel::Direct
+    }
+}
+
+/// True when the process has MSIX package identity. With a zero-length buffer
+/// the call reports `ERROR_INSUFFICIENT_BUFFER` for a packaged process and
+/// `APPMODEL_ERROR_NO_PACKAGE` for an unpackaged one; only the latter means
+/// "not a Store install".
+#[cfg(windows)]
+fn is_packaged() -> bool {
+    use windows::Win32::Foundation::APPMODEL_ERROR_NO_PACKAGE;
+    use windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+
+    let mut len = 0u32;
+    // SAFETY: a null buffer with length 0 is the documented way to query
+    // whether (and how large) a package full name exists.
+    let rc = unsafe { GetCurrentPackageFullName(&mut len, None) };
+    rc != APPMODEL_ERROR_NO_PACKAGE
+}
+
+#[cfg(not(windows))]
+fn is_packaged() -> bool {
+    false
+}
+
 /// The payload Settings → Updates renders. `version` is only meaningful when
 /// `available` is true, but is always populated so the frontend never has to
 /// handle a partial shape.
@@ -63,6 +114,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn an_unpackaged_test_process_is_on_the_direct_channel() {
+        // `cargo test` never runs with package identity, so this pins the
+        // "not packaged" branch of the Win32 check (and the non-Windows stub).
+        assert_eq!(channel(), UpdateChannel::Direct);
+    }
+
+    #[test]
+    fn update_channel_serializes_as_lowercase_for_the_frontend() {
+        assert_eq!(serde_json::to_string(&UpdateChannel::Store).unwrap(), "\"store\"");
+        assert_eq!(serde_json::to_string(&UpdateChannel::Direct).unwrap(), "\"direct\"");
     }
 
     #[test]

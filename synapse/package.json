@@ -21,6 +21,7 @@
     "test:watch": "vitest",
     "guards": "node ../scripts/guards/run.mjs",
     "guards:selftest": "node ../scripts/guards/selftest.mjs",
+    "store:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File src-tauri/store/build-msix.ps1",
     "predev": "node ../scripts/copy-vad-assets.mjs",
     "prebuild": "node ../scripts/copy-vad-assets.mjs"
   },

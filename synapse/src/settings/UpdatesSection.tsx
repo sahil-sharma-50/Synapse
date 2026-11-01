@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { formatBytes } from "../modelDownload";
+
+/** Where this copy gets updates: the GitHub installer, or the Microsoft Store (MSIX). */
+type UpdateChannel = "direct" | "store";
+
+/** Synapse's Store listing (Partner Center product 9PDDK7S60F73). */
+const STORE_LISTING_URL = "ms-windows-store://pdp/?productid=9PDDK7S60F73";
 
 interface UpdateInfo {
   current_version: string;
@@ -34,6 +41,8 @@ export default function UpdatesSection() {
   const [currentVersion, setCurrentVersion] = useState("");
   const [progress, setProgress] = useState<UpdateDownloadProgress | null>(null);
   const [error, setError] = useState("");
+  // Null until the backend answers, so neither variant flashes on open.
+  const [channel, setChannel] = useState<UpdateChannel | null>(null);
 
   useEffect(() => {
     // Best-effort: shows the version immediately, but the check result also
@@ -41,6 +50,11 @@ export default function UpdatesSection() {
     getVersion()
       .then(setCurrentVersion)
       .catch(() => {});
+    // A failed query falls back to "direct": the backend refuses the update
+    // commands for a Store install anyway, so the worst case is an error message.
+    invoke<UpdateChannel>("update_channel")
+      .then(setChannel)
+      .catch(() => setChannel("direct"));
   }, []);
 
   useEffect(() => {
@@ -89,6 +103,46 @@ export default function UpdatesSection() {
   const downloaded = progress?.bytes_downloaded ?? 0;
   const known = total > 0;
   const percent = known ? Math.min(100, (100 * downloaded) / total) : 0;
+
+  if (channel === "store") {
+    return (
+      <div className="set-section">
+        <div className="set-page-head">
+          <h2 className="set-title">Updates</h2>
+          <p className="set-subtitle">
+            This copy of Synapse was installed from the Microsoft Store, which installs updates
+            automatically.
+          </p>
+        </div>
+
+        <div className="set-card">
+          <div className="set-card-row">
+            <span className="set-label">Current version</span>
+            <div className="set-key">
+              <span className="set-badge set-ok">v{currentVersion || "…"}</span>
+            </div>
+          </div>
+          <div className="set-card-row">
+            <span className="set-label" />
+            <div className="set-key">
+              <button
+                className="set-btn set-btn-quiet"
+                onClick={() => openUrl(STORE_LISTING_URL).catch((e) => setError(String(e)))}
+              >
+                Open in Microsoft Store
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="set-error" role="alert">
+            {error}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="set-section">

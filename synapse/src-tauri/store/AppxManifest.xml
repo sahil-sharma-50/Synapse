@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for the Microsoft Store build. `build-msix.ps1` copies this into
+  the staging folder and replaces __VERSION__ with tauri.conf.json's version + ".0"
+  (the Store requires the fourth part to be 0).
+
+  Identity Name and Publisher are assigned by Partner Center (Synapse Voice,
+  product 9PDDK7S60F73 → Product identity) and must match it exactly, or the
+  upload is rejected. The Store re-signs the package, so no certificate is needed.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="SahilSharmaStudios.SynapseVoice"
+    Publisher="CN=807F32D3-311A-4715-BA23-230AD3B4D014"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Synapse Voice</DisplayName>
+    <PublisherDisplayName>Sahil Sharma Studios</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Synapse" Executable="synapse.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Synapse Voice"
+        Description="Private, offline voice typing for Windows, with clipboard, notes and AI one shortcut away."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Synapse is a Win32 app: global hotkeys, focus restore, text injection. -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Lists Synapse under Settings → Privacy → Microphone for dictation. -->
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

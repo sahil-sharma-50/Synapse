@@ -25,6 +25,9 @@
       "allow": [
         {
           "url": "ms-settings:*"
+        },
+        {
+          "url": "ms-windows-store://pdp/?productid=9PDDK7S60F73"
         }
       ]
     },

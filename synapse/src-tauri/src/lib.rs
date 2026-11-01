@@ -1181,7 +1181,15 @@ fn preview_voice(app: tauri::AppHandle, voice: String) -> Result<u64, String> {
 /// caller: the endpoint and the public key that must sign it are pinned in
 /// `tauri.conf.json`, so no window can influence what gets installed.
 #[tauri::command]
+fn update_channel() -> updater::UpdateChannel {
+    updater::channel()
+}
+
+#[tauri::command]
 async fn check_for_update(app: tauri::AppHandle) -> Result<updater::UpdateInfo, String> {
+    if updater::channel() == updater::UpdateChannel::Store {
+        return Err(updater::STORE_MANAGED.to_string());
+    }
     let current = app.package_info().version.to_string();
     let found = app
         .updater()
@@ -1216,6 +1224,9 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<updater::UpdateInfo, 
 /// be a window for it to be swapped.
 #[tauri::command]
 async fn download_update(app: tauri::AppHandle) -> Result<(), String> {
+    if updater::channel() == updater::UpdateChannel::Store {
+        return Err(updater::STORE_MANAGED.to_string());
+    }
     let Some(update) = app
         .updater()
         .map_err(|e| format!("update failed: {e}"))?
@@ -2073,6 +2084,7 @@ pub fn run() {
             download_model,
             tts_setup_status,
             download_tts_engine,
+            update_channel,
             check_for_update,
             download_update
         ])

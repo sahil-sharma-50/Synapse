@@ -223,3 +223,6 @@ output/
 
 # ASR spike model weights (downloaded separately, not checked in)
 spikes/asr-spike/model/*.onnx
+
+# Private business planning doc (not for the public repo)
+MONETIZATION_EXECUTION_PLAN.md
