@@ -5601,7 +5601,7 @@ dependencies = [
 name = "synapse"
 version = "0.2.2"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "clipboard-win",
  "cpal 0.17.1",
